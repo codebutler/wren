@@ -1,3 +1,17 @@
+## Unreleased
+
+### API
+- Add a debugger line hook, `wrenSetLineHook`. It is called before the first
+  instruction of each new line. The interpreter loop is now compiled twice
+  (`wren_interpreter.inc`): without a hook the plain loop runs exactly as
+  before, and installing or removing a hook moves execution between the two.
+- Record local variable names, their scopes, and captured variable names for
+  each function at compile time.
+- Add stack inspection for debuggers: `wrenGetStackFrameCount`,
+  `wrenGetStackFrame`, `wrenGetFrameVariableCount`, `wrenGetFrameVariable`,
+  `wrenGetModuleVariableCount`, `wrenGetModuleVariableAt` and
+  `wrenGetSlotClassName`.
+
 ## 0.4.0
 
 ### Language

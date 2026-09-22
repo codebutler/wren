@@ -222,6 +222,10 @@ typedef struct
 
   // If this local variable is being used as an upvalue.
   bool isUpvalue;
+
+  // The index of this local's record in the function's debug variables, or -1
+  // if it has none.
+  int debugVariable;
 } Local;
 
 typedef struct
@@ -528,6 +532,43 @@ static int addConstant(Compiler* compiler, Value constant)
   return compiler->fn->constants.count - 1;
 }
 
+// Records a named variable in the debug information of the function being
+// compiled so that a debugger can show it. [start] is the bytecode offset
+// where a local comes into scope, or -1 for a captured variable. Returns the
+// index of the record, or -1 if the variable is not recorded.
+static int recordVariable(Compiler* compiler, const char* name, int length,
+                          int index, int start)
+{
+  // The compiler's own hidden locals ("seq ", "iter ") have names that no
+  // program can spell, so they are not the user's to inspect.
+  if (name == NULL || memchr(name, ' ', length) != NULL) return -1;
+
+  WrenVM* vm = compiler->parser->vm;
+  FnVariable variable;
+  variable.name = ALLOCATE_ARRAY(vm, char, length + 1);
+  memcpy(variable.name, name, length);
+  variable.name[length] = '\0';
+  variable.index = index;
+  variable.start = start;
+  variable.end = -1;
+
+  FnVariableBuffer* variables = &compiler->fn->debug->variables;
+  wrenFnVariableBufferWrite(vm, variables, variable);
+  return variables->count - 1;
+}
+
+// Marks the locals from [first] up to the innermost one as going out of scope
+// at the current end of the bytecode.
+static void endVariableScopes(Compiler* compiler, int first)
+{
+  for (int i = first; i < compiler->numLocals; i++)
+  {
+    int variable = compiler->locals[i].debugVariable;
+    if (variable == -1) continue;
+    compiler->fn->debug->variables.data[variable].end = compiler->fn->code.count;
+  }
+}
+
 // Initializes [compiler].
 static void initCompiler(Compiler* compiler, Parser* parser, Compiler* parent,
                          bool isMethod)
@@ -569,6 +610,7 @@ static void initCompiler(Compiler* compiler, Parser* parser, Compiler* parent,
   
   compiler->locals[0].depth = -1;
   compiler->locals[0].isUpvalue = false;
+  compiler->locals[0].debugVariable = -1;
 
   if (parent == NULL)
   {
@@ -585,6 +627,12 @@ static void initCompiler(Compiler* compiler, Parser* parser, Compiler* parent,
   compiler->attributes = wrenNewMap(parser->vm);
   compiler->fn = wrenNewFunction(parser->vm, parser->module,
                                  compiler->numLocals);
+
+  if (isMethod)
+  {
+    compiler->locals[0].debugVariable = recordVariable(compiler, "this", 4,
+                                                       0, 0);
+  }
 }
 
 // Lexing ----------------------------------------------------------------------
@@ -1385,6 +1433,9 @@ static int addLocal(Compiler* compiler, const char* name, int length)
   local->length = length;
   local->depth = compiler->scopeDepth;
   local->isUpvalue = false;
+  local->debugVariable = recordVariable(compiler, name, length,
+                                        compiler->numLocals,
+                                        compiler->fn->code.count);
   return compiler->numLocals++;
 }
 
@@ -1521,6 +1572,13 @@ static int discardLocals(Compiler* compiler, int depth)
 // temporaries are still on the stack.
 static void popScope(Compiler* compiler)
 {
+  int first = compiler->numLocals;
+  while (first > 0 && compiler->locals[first - 1].depth >= compiler->scopeDepth)
+  {
+    first--;
+  }
+  endVariableScopes(compiler, first);
+
   int popped = discardLocals(compiler, compiler->scopeDepth);
   compiler->numLocals -= popped;
   compiler->numSlots -= popped;
@@ -1563,6 +1621,17 @@ static int addUpvalue(Compiler* compiler, bool isLocal, int index)
   return compiler->fn->numUpvalues++;
 }
 
+// Adds an upvalue like [addUpvalue], and records [name] for the debugger the
+// first time the function captures it.
+static int addNamedUpvalue(Compiler* compiler, bool isLocal, int index,
+                           const char* name, int length)
+{
+  int count = compiler->fn->numUpvalues;
+  int upvalue = addUpvalue(compiler, isLocal, index);
+  if (upvalue == count) recordVariable(compiler, name, length, upvalue, -1);
+  return upvalue;
+}
+
 // Attempts to look up [name] in the functions enclosing the one being compiled
 // by [compiler]. If found, it adds an upvalue for it to this compiler's list
 // of upvalues (unless it's already in there) and returns its index. If not
@@ -1591,7 +1660,7 @@ static int findUpvalue(Compiler* compiler, const char* name, int length)
     // scope.
     compiler->parent->locals[local].isUpvalue = true;
 
-    return addUpvalue(compiler, true, local);
+    return addNamedUpvalue(compiler, true, local, name, length);
   }
 
   // See if it's an upvalue in the immediately enclosing function. In other
@@ -1603,7 +1672,7 @@ static int findUpvalue(Compiler* compiler, const char* name, int length)
   int upvalue = findUpvalue(compiler->parent, name, length);
   if (upvalue != -1)
   {
-    return addUpvalue(compiler, false, upvalue);
+    return addNamedUpvalue(compiler, false, upvalue, name, length);
   }
 
   // If we got here, we walked all the way up the parent chain and couldn't
@@ -1671,6 +1740,9 @@ static ObjFn* endCompiler(Compiler* compiler,
   // Mark the end of the bytecode. Since it may contain multiple early returns,
   // we can't rely on CODE_RETURN to tell us we're at the end.
   emitOp(compiler, CODE_END);
+
+  // Parameters and any locals still in scope last until the end.
+  endVariableScopes(compiler, 0);
 
   wrenFunctionBindName(compiler->parser->vm, compiler->fn,
                        debugName, debugNameLength);

@@ -202,6 +202,25 @@ typedef struct sObjUpvalue
 // or modifies the running fiber, it returns `false`.
 typedef bool (*Primitive)(WrenVM* vm, Value* args);
 
+// A named variable of a function, recorded by the compiler so a debugger can
+// show it.
+typedef struct
+{
+  // The variable's name. Heap allocated and owned by the FnDebug.
+  char* name;
+
+  // For a local, its stack slot relative to the frame. For a captured
+  // variable, its upvalue index.
+  int index;
+
+  // The bytecode range [start, end) in which a local is in scope. Both are -1
+  // for a captured variable, which is in scope for the whole function.
+  int start;
+  int end;
+} FnVariable;
+
+DECLARE_BUFFER(FnVariable, FnVariable);
+
 // TODO: See if it's actually a perf improvement to have this in a separate
 // struct instead of in ObjFn.
 // Stores debugging information for a function used for things like stack
@@ -215,6 +234,9 @@ typedef struct
   // bytecode in the function's bytecode array. The value of that element is
   // the line in the source code that generated that instruction.
   IntBuffer sourceLines;
+
+  // The function's named local and captured variables, in declaration order.
+  FnVariableBuffer variables;
 } FnDebug;
 
 // A loaded module and the top-level variables it defines.
