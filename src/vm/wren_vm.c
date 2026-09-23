@@ -855,7 +855,8 @@ static void callLineHook(WrenVM* vm, ObjFiber* fiber, ObjFn* fn, int line)
 }
 
 // Refills the interrupt countdown and runs the interrupt hook, if any, with the
-// same API stack window as the line hook.
+// same API stack window as the line hook. Unlike the line hook, it runs after
+// the frame's last instruction (the jump or call), not before the next one.
 static void callInterruptHook(WrenVM* vm, ObjFiber* fiber)
 {
   vm->interruptCountdown = vm->interruptInterval;
@@ -864,11 +865,9 @@ static void callInterruptHook(WrenVM* vm, ObjFiber* fiber)
   Value* apiStack = vm->apiStack;
   int stackTop = (int)(fiber->stackTop - fiber->stack);
   vm->apiStack = fiber->stackTop;
-  vm->inLineHook = true;
 
   vm->interruptHook(vm);
 
-  vm->inLineHook = false;
   fiber->stackTop = fiber->stack + stackTop;
   vm->apiStack = apiStack;
 }
