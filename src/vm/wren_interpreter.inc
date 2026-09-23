@@ -77,10 +77,14 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
   // True when the installed hook no longer matches this loop.
   #define HOOK_CHANGED() ((vm->lineHook != NULL) != WREN_INTERPRETER_HOOKED)
 
-  // A safepoint, at each loop iteration and call: every interruptInterval of
-  // them, the interrupt hook runs. It may abort the fiber or install the line
-  // hook, and may have moved the stack.
-  #define INTERRUPT_CHECK()                                                    \
+  // A safepoint, before each loop back-jump and each call: every
+  // interruptInterval of them, the interrupt hook runs. It sees the frame as
+  // a runtime error would, with the jump or call as the last instruction, so
+  // an abort reports the line of the loop or call. It may also have moved the
+  // stack, so [reload] refreshes pointers into it; or installed or removed the
+  // line hook, and then the remaining arguments, which finish the jump or
+  // call, run before handing over to the other loop.
+  #define INTERRUPT_CHECK(reload, ...)                                         \
       do                                                                       \
       {                                                                        \
         if (--vm->interruptCountdown <= 0)                                     \
@@ -88,8 +92,13 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
           STORE_FRAME();                                                       \
           callInterruptHook(vm, fiber);                                        \
           if (wrenHasError(fiber)) RUNTIME_ERROR();                            \
-          if (HOOK_CHANGED()) SWITCH_LOOP();                                   \
           LOAD_FRAME();                                                        \
+          reload;                                                              \
+          if (HOOK_CHANGED())                                                  \
+          {                                                                    \
+            __VA_ARGS__;                                                       \
+            SWITCH_LOOP();                                                     \
+          }                                                                    \
         }                                                                      \
       } while (false)
 
@@ -297,10 +306,14 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
             break;
           }
 
+          INTERRUPT_CHECK(args = fiber->stackTop - numArgs, {
+            STORE_FRAME();
+            method->as.primitive(vm, args);
+            LOAD_FRAME();
+          });
           STORE_FRAME();
           method->as.primitive(vm, args);
           LOAD_FRAME();
-          INTERRUPT_CHECK();
           break;
 
         case METHOD_FOREIGN:
@@ -314,10 +327,14 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
           break;
 
         case METHOD_BLOCK:
+          INTERRUPT_CHECK(args = fiber->stackTop - numArgs, {
+            STORE_FRAME();
+            wrenCallFunction(vm, fiber, (ObjClosure*)method->as.closure, numArgs);
+            LOAD_FRAME();
+          });
           STORE_FRAME();
           wrenCallFunction(vm, fiber, (ObjClosure*)method->as.closure, numArgs);
           LOAD_FRAME();
-          INTERRUPT_CHECK();
           break;
 
         case METHOD_NONE:
@@ -393,13 +410,13 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
     {
       // Jump back to the top of the loop.
       uint16_t offset = READ_SHORT();
+      INTERRUPT_CHECK((void)0, ip -= offset);
       ip -= offset;
 
       #if WREN_INTERPRETER_HOOKED
         // Each iteration reports its first line, even if it is this one.
         vm->hookLine = -1;
       #endif
-      INTERRUPT_CHECK();
       DISPATCH();
     }
 
