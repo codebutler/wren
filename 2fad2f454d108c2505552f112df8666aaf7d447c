@@ -1,0 +1,35 @@
+src/vm/wren_interpreter.inc
+  s_09ca5be4d1f36e::t_75f807a401798c 80-87,96-101,309-313,330-334,413
+src/vm/wren_vm.c
+  s_09ca5be4d1f36e::t_111dadda897571 858-859
+src/vm/wren_vm.h
+  s_09ca5be4d1f36e::t_422b21cffb3c69 131-132
+test/api/interrupt_call.wren
+  s_933b3a080cf777::t_e59dc9189aa71c 1-12
+test/api/interrupt_loop.wren
+  s_933b3a080cf777::t_72d330a9401a3b 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2fad2f454d108c2505552f112df8666aaf7d447c",
+  "prompts": {},
+  "sessions": {
+    "s_09ca5be4d1f36e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d5e0311a-1c9e-4552-8356-07fa6df6653d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    },
+    "s_933b3a080cf777": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88eeb02b-3be1-446c-abbd-5e3412e6d6bb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    }
+  }
+}

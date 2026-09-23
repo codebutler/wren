@@ -1,0 +1,35 @@
+CHANGELOG.md
+  s_1be064f89bff0a::t_f97e5fda52229e 35-37
+src/include/wren.h
+  s_430deec5eaf7d1::t_422bf5dc8ca349 696-701
+src/vm/wren_vm.c
+  s_430deec5eaf7d1::t_65acacea6dcfd3 1830-1893,1909-1914,1916-1917,1919-1920,1929,1931,1937,1944-1950,1955-1956,2098
+test/api/debugger.c
+  s_430deec5eaf7d1::t_467e1b3c12133c 2,14-17,25,86-107
+test/api/debugger.wren
+  s_430deec5eaf7d1::t_f8757cfed853df 148-163,176,178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "52969b56c2ff0271bdf03afc1cc7ff5dff0a7c94",
+  "prompts": {},
+  "sessions": {
+    "s_1be064f89bff0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "77f755de-3715-4ac9-8ca7-487aa4319518",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    },
+    "s_430deec5eaf7d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "859db5f8-ebfd-422d-8c0c-7aa5fc4028a1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    }
+  }
+}
