@@ -115,6 +115,9 @@ struct WrenVM
   // The debugger's line hook, or NULL if none is installed.
   WrenLineHookFn lineHook;
 
+  // The field or method [wrenReplaceMethods] last reported as different.
+  char replaceDetail[MAX_METHOD_SIGNATURE + 8];
+
   // Where the line hook last reported: the fiber, its frame depth and the
   // line. A line is new when any of these differ. [hookFiber] is only
   // compared, never dereferenced.

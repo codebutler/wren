@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "wren.h"
@@ -1647,4 +1648,256 @@ const char* wrenGetSlotClassName(WrenVM* vm, int slot)
 {
   validateApiSlot(vm, slot);
   return wrenGetClassInline(vm, vm->apiStack[slot])->name->value;
+}
+
+// Live code replacement -------------------------------------------------------
+
+// Returns the class stored in top-level variable [name] of [module], or NULL.
+static ObjClass* findModuleClass(ObjModule* module, const char* name)
+{
+  int symbol = wrenSymbolTableFind(&module->variableNames, name, strlen(name));
+  if (symbol == -1) return NULL;
+  Value value = module->variables.data[symbol];
+  return IS_CLASS(value) ? AS_CLASS(value) : NULL;
+}
+
+static Method methodAt(ObjClass* classObj, int symbol)
+{
+  if (symbol < classObj->methods.count) return classObj->methods.data[symbol];
+  Method none;
+  none.type = METHOD_NONE;
+  return none;
+}
+
+static bool sameMethod(Method a, Method b)
+{
+  if (a.type != b.type) return false;
+  switch (a.type)
+  {
+    case METHOD_PRIMITIVE:
+    case METHOD_FUNCTION_CALL: return a.as.primitive == b.as.primitive;
+    case METHOD_FOREIGN:       return a.as.foreign == b.as.foreign;
+    case METHOD_BLOCK:         return a.as.closure == b.as.closure;
+    case METHOD_NONE:          return true;
+  }
+  return false;
+}
+
+// True if [classObj] defines method [symbol] itself rather than inheriting it.
+// Inheriting copies the superclass's entry, so an inherited method is the
+// very same entry as the superclass's.
+static bool definesMethod(ObjClass* classObj, int symbol)
+{
+  Method method = methodAt(classObj, symbol);
+  if (method.type == METHOD_NONE) return false;
+  if (classObj->superclass == NULL) return true;
+  return !sameMethod(method, methodAt(classObj->superclass, symbol));
+}
+
+static int maxMethodCount(ObjClass* a, ObjClass* b)
+{
+  return a->methods.count > b->methods.count ? a->methods.count
+                                              : b->methods.count;
+}
+
+// Copies the [index]th space-separated name of [names] into the VM's detail
+// buffer and returns it.
+static const char* fieldNameDetail(WrenVM* vm, ObjString* names, int index)
+{
+  const char* at = names->value;
+  const char* end = names->value + names->length;
+  for (int i = 0; i < index; i++) at = strchr(at, ' ') + 1;
+  const char* stop = strchr(at, ' ');
+  if (stop == NULL) stop = end;
+  snprintf(vm->replaceDetail, sizeof(vm->replaceDetail), "%.*s",
+           (int)(stop - at), at);
+  return vm->replaceDetail;
+}
+
+// Returns the index of the first field name that differs between [a] and [b]
+// (either may be NULL for no fields), or -1 if they are the same.
+static int firstFieldDifference(ObjString* a, ObjString* b, ObjString** in)
+{
+  const char* p = a == NULL ? "" : a->value;
+  const char* q = b == NULL ? "" : b->value;
+  int index = 0;
+  for (;;)
+  {
+    if (*p == '\0' && *q == '\0') return -1;
+    const char* pEnd = strchr(p, ' ');
+    const char* qEnd = strchr(q, ' ');
+    size_t pLength = pEnd == NULL ? strlen(p) : (size_t)(pEnd - p);
+    size_t qLength = qEnd == NULL ? strlen(q) : (size_t)(qEnd - q);
+    if (pLength != qLength || memcmp(p, q, pLength) != 0)
+    {
+      // Name the field the replacement declares, unless it declares none.
+      *in = *q != '\0' ? b : a;
+      return index;
+    }
+    p += pLength + (pEnd == NULL ? 0 : 1);
+    q += qLength + (qEnd == NULL ? 0 : 1);
+    index++;
+  }
+}
+
+// Returns the upvalue named [name] captured by a method [classObj] defines
+// itself, or NULL.
+static ObjUpvalue* findMethodUpvalue(ObjClass* classObj, const char* name)
+{
+  for (int symbol = 0; symbol < classObj->methods.count; symbol++)
+  {
+    if (!definesMethod(classObj, symbol)) continue;
+    Method method = classObj->methods.data[symbol];
+    if (method.type != METHOD_BLOCK) continue;
+
+    ObjClosure* closure = method.as.closure;
+    FnVariableBuffer* variables = &closure->fn->debug->variables;
+    for (int i = 0; i < variables->count; i++)
+    {
+      FnVariable* variable = &variables->data[i];
+      if (variable->start != -1) continue; // A local, not a captured variable.
+      if (strcmp(variable->name, name) == 0)
+      {
+        return closure->upvalues[variable->index];
+      }
+    }
+  }
+  return NULL;
+}
+
+// Points the captured variables of [source]'s own methods at the variables of
+// the same name that [target]'s methods captured. In a class body these are
+// the static fields, so the replacement keeps their values.
+static void shareUpvalues(ObjClass* target, ObjClass* source)
+{
+  for (int symbol = 0; symbol < source->methods.count; symbol++)
+  {
+    if (!definesMethod(source, symbol)) continue;
+    Method method = source->methods.data[symbol];
+    if (method.type != METHOD_BLOCK) continue;
+
+    ObjClosure* closure = method.as.closure;
+    FnVariableBuffer* variables = &closure->fn->debug->variables;
+    for (int i = 0; i < variables->count; i++)
+    {
+      FnVariable* variable = &variables->data[i];
+      if (variable->start != -1) continue;
+      ObjUpvalue* shared = findMethodUpvalue(target, variable->name);
+      if (shared != NULL) closure->upvalues[variable->index] = shared;
+    }
+  }
+}
+
+static bool inheritsFrom(ObjClass* classObj, ObjClass* ancestor)
+{
+  for (ObjClass* c = classObj->superclass; c != NULL; c = c->superclass)
+  {
+    if (c == ancestor) return true;
+  }
+  return false;
+}
+
+// Reports the first method [target] defines and [source] does not.
+static bool findRemovedMethod(WrenVM* vm, ObjClass* target, ObjClass* source,
+                              bool isStatic, const char** detail)
+{
+  int count = maxMethodCount(target, source);
+  for (int symbol = 0; symbol < count; symbol++)
+  {
+    if (!definesMethod(target, symbol) || definesMethod(source, symbol))
+    {
+      continue;
+    }
+    if (detail != NULL)
+    {
+      snprintf(vm->replaceDetail, sizeof(vm->replaceDetail), "%s%s",
+               isStatic ? "static " : "",
+               vm->methodNames.data[symbol]->value);
+      *detail = vm->replaceDetail;
+    }
+    return true;
+  }
+  return false;
+}
+
+// Binds every method [source] defines into [target]. For instance methods
+// ([subclasses] true), a subclass of [target] that still has the entry
+// [target] had inherits the new one too.
+static void replaceMethods(WrenVM* vm, ObjClass* target, ObjClass* source,
+                           bool subclasses)
+{
+  for (int symbol = 0; symbol < source->methods.count; symbol++)
+  {
+    if (!definesMethod(source, symbol)) continue;
+    Method old = methodAt(target, symbol);
+    Method method = source->methods.data[symbol];
+    wrenBindMethod(vm, target, symbol, method);
+    if (!subclasses) continue;
+
+    // Binding may grow a method table and collect garbage. The caller
+    // collected first, so every class on the list is reachable and stays so;
+    // only objects that cannot be classes (the replaced closures) may be
+    // freed while we walk.
+    for (Obj* obj = vm->first; obj != NULL; obj = obj->next)
+    {
+      if (obj->type != OBJ_CLASS) continue;
+      ObjClass* subclass = (ObjClass*)obj;
+      if (!inheritsFrom(subclass, target)) continue;
+      if (!sameMethod(methodAt(subclass, symbol), old)) continue;
+      wrenBindMethod(vm, subclass, symbol, method);
+    }
+  }
+}
+
+WrenReplaceResult wrenReplaceMethods(WrenVM* vm, const char* module,
+                                     const char* target, const char* source,
+                                     const char** detail)
+{
+  ASSERT(target != NULL, "Target class name cannot be NULL.");
+  ASSERT(source != NULL, "Source class name cannot be NULL.");
+  if (detail != NULL) *detail = NULL;
+
+  ObjModule* moduleObj = findModuleByName(vm, module);
+  if (moduleObj == NULL) return WREN_REPLACE_NOT_FOUND;
+  ObjClass* targetClass = findModuleClass(moduleObj, target);
+  ObjClass* sourceClass = findModuleClass(moduleObj, source);
+  if (targetClass == NULL || sourceClass == NULL) return WREN_REPLACE_NOT_FOUND;
+
+  if (targetClass == sourceClass ||
+      targetClass->numFields == -1 || sourceClass->numFields == -1)
+  {
+    return WREN_REPLACE_UNSUPPORTED;
+  }
+
+  if (targetClass->superclass != sourceClass->superclass)
+  {
+    return WREN_REPLACE_SUPERCLASS_CHANGED;
+  }
+
+  ObjString* names = NULL;
+  int field = firstFieldDifference(targetClass->fieldNames,
+                                   sourceClass->fieldNames, &names);
+  if (field != -1)
+  {
+    if (detail != NULL) *detail = fieldNameDetail(vm, names, field);
+    return WREN_REPLACE_FIELDS_CHANGED;
+  }
+
+  ObjClass* targetMeta = targetClass->obj.classObj;
+  ObjClass* sourceMeta = sourceClass->obj.classObj;
+  if (findRemovedMethod(vm, targetClass, sourceClass, false, detail) ||
+      findRemovedMethod(vm, targetMeta, sourceMeta, true, detail))
+  {
+    return WREN_REPLACE_METHOD_REMOVED;
+  }
+
+  // Every check passed: nothing below can fail.
+  shareUpvalues(targetClass, sourceClass);
+  shareUpvalues(targetMeta, sourceMeta);
+  wrenCollectGarbage(vm);
+  replaceMethods(vm, targetClass, sourceClass, true);
+  // Static methods are not inherited: a metaclass's superclass is Class.
+  replaceMethods(vm, targetMeta, sourceMeta, false);
+  targetClass->attributes = sourceClass->attributes;
+  return WREN_REPLACE_SUCCESS;
 }
