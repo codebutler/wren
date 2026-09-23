@@ -33,6 +33,7 @@
 
 DEFINE_BUFFER(Value, Value);
 DEFINE_BUFFER(Method, Method);
+DEFINE_BUFFER(FnVariable, FnVariable);
 
 static void initObj(WrenVM* vm, Obj* obj, ObjType type, ObjClass* classObj)
 {
@@ -246,6 +247,7 @@ ObjFn* wrenNewFunction(WrenVM* vm, ObjModule* module, int maxSlots)
   FnDebug* debug = ALLOCATE(vm, FnDebug);
   debug->name = NULL;
   wrenIntBufferInit(&debug->sourceLines);
+  wrenFnVariableBufferInit(&debug->variables);
 
   ObjFn* fn = ALLOCATE(vm, ObjFn);
   initObj(vm, &fn->obj, OBJ_FN, vm->fnClass);
@@ -1099,6 +1101,7 @@ static void blackenFn(WrenVM* vm, ObjFn* fn)
   
   // The debug line number buffer.
   vm->bytesAllocated += sizeof(int) * fn->code.capacity;
+  vm->bytesAllocated += sizeof(FnVariable) * fn->debug->variables.capacity;
   // TODO: What about the function name?
 }
 
@@ -1254,6 +1257,11 @@ void wrenFreeObj(WrenVM* vm, Obj* obj)
       wrenValueBufferClear(vm, &fn->constants);
       wrenByteBufferClear(vm, &fn->code);
       wrenIntBufferClear(vm, &fn->debug->sourceLines);
+      for (int i = 0; i < fn->debug->variables.count; i++)
+      {
+        DEALLOCATE(vm, fn->debug->variables.data[i].name);
+      }
+      wrenFnVariableBufferClear(vm, &fn->debug->variables);
       DEALLOCATE(vm, fn->debug->name);
       DEALLOCATE(vm, fn->debug);
       break;

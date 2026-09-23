@@ -111,6 +111,20 @@ struct WrenVM
   // There is a single global symbol table for all method names on all classes.
   // Method calls are dispatched directly by index in this table.
   SymbolTable methodNames;
+
+  // The debugger's line hook, or NULL if none is installed.
+  WrenLineHookFn lineHook;
+
+  // Where the line hook last reported: the fiber, its frame depth and the
+  // line. A line is new when any of these differ. [hookFiber] is only
+  // compared, never dereferenced.
+  ObjFiber* hookFiber;
+  int hookDepth;
+  int hookLine;
+
+  // True while the line hook runs. The innermost frame's ip then points at
+  // the instruction about to execute rather than past the last one.
+  bool inLineHook;
 };
 
 // A generic allocation function that handles all explicit memory management.

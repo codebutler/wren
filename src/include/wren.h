@@ -551,4 +551,72 @@ WREN_API void* wrenGetUserData(WrenVM* vm);
 // Sets user data associated with the WrenVM.
 WREN_API void wrenSetUserData(WrenVM* vm, void* userData);
 
+// Debugging -------------------------------------------------------------------
+
+// A function the VM calls before it executes the first instruction of a new
+// source line: when the line changes, when a function starts, when a loop
+// jumps back, and when execution switches to another fiber. Returning from a
+// call to the rest of a line that already started does not call it again.
+//
+// [module] is the name of the module being executed, or NULL for the built-in
+// core module. [line] is 1-based.
+//
+// While the hook runs, the stack inspection functions below describe the
+// running fiber, and the slot API may be used after calling
+// [wrenEnsureSlots]. The hook may call [wrenAbortFiber] to raise a runtime
+// error at this line. It must not call [wrenCall] or [wrenInterpret].
+typedef void (*WrenLineHookFn)(WrenVM* vm, const char* module, int line);
+
+// Sets the line hook, or disables it when [hook] is NULL. With no hook
+// installed the interpreter only tests for one after each instruction.
+WREN_API void wrenSetLineHook(WrenVM* vm, WrenLineHookFn hook);
+
+// One call frame of the running fiber.
+typedef struct
+{
+  // The module name, or NULL for the built-in core module.
+  const char* module;
+
+  // The function name, as it appears in stack traces.
+  const char* function;
+
+  // The 1-based line being executed in the frame.
+  int line;
+} WrenStackFrame;
+
+// Returns the number of call frames in the running fiber and the fibers that
+// called it. Only meaningful inside a line hook or a foreign method; returns
+// 0 when no Wren code is executing.
+WREN_API int wrenGetStackFrameCount(WrenVM* vm);
+
+// Describes call frame [frame], where 0 is the innermost frame. Returns false
+// if [frame] is out of range. The strings are owned by the VM and stay valid
+// until the next call into it.
+WREN_API bool wrenGetStackFrame(WrenVM* vm, int frame, WrenStackFrame* out);
+
+// Returns the number of named variables visible in call frame [frame]: its
+// local variables in scope at the current line (parameters included) and the
+// variables it captured from enclosing functions.
+WREN_API int wrenGetFrameVariableCount(WrenVM* vm, int frame);
+
+// Stores the value of variable [index] of call frame [frame] in [slot] and
+// returns its name, or returns NULL if either index is out of range. Locals
+// come first, in declaration order, then captured variables.
+WREN_API const char* wrenGetFrameVariable(WrenVM* vm, int frame, int index,
+                                          int slot);
+
+// Returns the number of top-level variables defined in resolved [module], or
+// -1 if the module does not exist. Every module implicitly starts with the
+// core module's classes.
+WREN_API int wrenGetModuleVariableCount(WrenVM* vm, const char* module);
+
+// Stores top-level variable [index] of resolved [module] in [slot] and returns
+// its name, or returns NULL if [index] is out of range.
+WREN_API const char* wrenGetModuleVariableAt(WrenVM* vm, const char* module,
+                                             int index, int slot);
+
+// Returns the name of the class of the value in [slot]. The string is owned
+// by the VM and stays valid until the next call into it.
+WREN_API const char* wrenGetSlotClassName(WrenVM* vm, int slot);
+
 #endif
