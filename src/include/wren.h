@@ -693,6 +693,12 @@ typedef enum
 // it. The line hook is not called again for that line. Locals keep their
 // values; any the frame leaves the scope of are discarded, and a variable a
 // closure captured from them is closed.
+//
+// If the frame runs a method whose body [wrenReplaceMethods] has replaced
+// since the call began, [line] may also be a line of the new body: the frame
+// then continues in the new body from there ("edit the line and run it
+// again"). Each local in scope at that line must be in scope now under the
+// same name in the same slot.
 WREN_API WrenSetLineResult wrenSetFrameLine(WrenVM* vm, int line);
 
 // Like [wrenInterpret], from inside a line hook or an error hook: runs

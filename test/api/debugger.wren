@@ -145,6 +145,22 @@ Stop.at(132, "eval", "__count")
 Tally.other()
 System.print(Stop.result) // expect: compile error: Error at '__count': Static field '__count' is not used by this method.
 
+// Edit a stopped method, then set the next statement onto a line of its new
+// body: the frame continues in the new body (its parameters kept).
+class Greeter {
+  construct new() {}
+  greet(name) {
+    var greeting = "old " + name
+    System.print(greeting)
+    return greeting
+  }
+}
+var greeter = Greeter.new()
+Stop.at(154, "swapset", "304|class Greeter2 {\n  construct new() {}\n  greet(name) {\n    var greeting = \"new \" + name\n    System.print(greeting)\n    return greeting\n  }\n}")
+System.print(greeter.greet("x")) // expect: new x
+// expect: new x
+System.print(Stop.result) // expect: moved
+
 // Nested top-level code from inside the hook.
 Stop.at(20, "interpret", "System.print(\"nested\")")
 p.sum(0) // expect: nested
@@ -157,9 +173,9 @@ var risky = Fn.new {
   a = a.nope
   return "resumed " + a.toString
 }
-Stop.onError(158)
+Stop.onError(174)
 System.print(risky.call()) // expect: resumed 1
-System.print(Stop.result) // expect: [Num does not implement 'nope'. at new(_) block argument:157] a=1 moved
+System.print(Stop.result) // expect: [Num does not implement 'nope'. at new(_) block argument:173] a=1 moved
 
 // A caught error does not call the hook.
 Stop.onError(0)

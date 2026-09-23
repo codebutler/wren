@@ -32,6 +32,9 @@
   stopped frame's scope: locals, captured variables, `this`, the defining
   class's fields; assignments change the frame) and `wrenInterpretInHook`
   (run top-level code while a fiber is stopped in a hook).
+- `wrenSetFrameLine` can move a frame onto its method's replaced body: after
+  `wrenReplaceMethods`, a stopped call can continue from a line of the new
+  body when its locals there match the frame's by name and slot.
 - Add `wrenGetInstanceFieldCount`, `wrenGetInstanceField` (with the field's
   name) and `wrenGetMapEntry` for inspecting values.
 
