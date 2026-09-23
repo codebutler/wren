@@ -217,6 +217,10 @@ typedef struct
   // for a captured variable, which is in scope for the whole function.
   int start;
   int end;
+
+  // True for the compiler's own locals ("seq ", "iter "), which no program
+  // can name. A debugger does not show them, but they occupy stack slots.
+  bool hidden;
 } FnVariable;
 
 DECLARE_BUFFER(FnVariable, FnVariable);
@@ -237,6 +241,11 @@ typedef struct
 
   // The function's named local and captured variables, in declaration order.
   FnVariableBuffer variables;
+
+  // The bytecode offsets where statements start, in increasing order. Only
+  // locals are on the stack there, no temporaries, which is what makes them
+  // safe places to move execution to (wrenSetFrameLine).
+  IntBuffer statements;
 } FnDebug;
 
 // A loaded module and the top-level variables it defines.

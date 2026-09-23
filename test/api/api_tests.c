@@ -28,6 +28,9 @@ WrenForeignMethodFn APITest_bindForeignMethod(
   method = debugBindMethod(fullName);
   if (method != NULL) return method;
 
+  method = debuggerBindMethod(fullName);
+  if (method != NULL) return method;
+
   method = errorBindMethod(fullName);
   if (method != NULL) return method;
 

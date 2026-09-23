@@ -12,6 +12,7 @@
 #include "call_calls_foreign.h"
 #include "call_wren_call_root.h"
 #include "debug.h"
+#include "debugger.h"
 #include "replace_methods.h"
 #include "error.h"
 #include "get_variable.h"
