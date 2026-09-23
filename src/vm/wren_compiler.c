@@ -204,6 +204,11 @@ typedef struct
 
   // If a syntax or compile error has occurred.
   bool hasError;
+
+  // When not NULL, the first error's message is copied here (up to
+  // [firstErrorSize] bytes, terminated) instead of being reported.
+  char* firstError;
+  size_t firstErrorSize;
 } Parser;
 
 typedef struct
@@ -317,6 +322,11 @@ typedef struct
   // True if the current method being compiled is static.
   bool inStatic;
 
+  // True when [fields] lists a class that already exists (code compiled in a
+  // stopped frame's scope, see wrenCompileInFrame): a field that is not in it
+  // is an error rather than a new field.
+  bool fieldsFixed;
+
   // The signature of the method being compiled.
   Signature* signature;
 } ClassInfo;
@@ -379,6 +389,12 @@ struct sCompiler
   int numAttributes;
   // Attributes for the next class or method.
   ObjMap* attributes;
+
+  // When compiling in the scope of a stopped call frame (wrenCompileInFrame),
+  // the function that frame runs and its bytecode offset. The compiler's
+  // locals then mirror the frame's and its captured variables resolve here.
+  ObjFn* frameFn;
+  int frameOffset;
 };
 
 // Describes where a variable is declared.
@@ -424,7 +440,24 @@ static const int stackEffects[] = {
 static void printError(Parser* parser, int line, const char* label,
                        const char* format, va_list args)
 {
+  bool first = !parser->hasError;
   parser->hasError = true;
+
+  if (parser->firstError != NULL)
+  {
+    if (first)
+    {
+      int length = snprintf(parser->firstError, parser->firstErrorSize, "%s: ",
+                            label);
+      if (length >= 0 && (size_t)length < parser->firstErrorSize)
+      {
+        vsnprintf(parser->firstError + length,
+                  parser->firstErrorSize - (size_t)length, format, args);
+      }
+    }
+    return;
+  }
+
   if (!parser->printErrors) return;
 
   // Only report errors if there is a WrenErrorFn to handle them.
@@ -539,9 +572,7 @@ static int addConstant(Compiler* compiler, Value constant)
 static int recordVariable(Compiler* compiler, const char* name, int length,
                           int index, int start)
 {
-  // The compiler's own hidden locals ("seq ", "iter ") have names that no
-  // program can spell, so they are not the user's to inspect.
-  if (name == NULL || memchr(name, ' ', length) != NULL) return -1;
+  if (name == NULL) return -1;
 
   WrenVM* vm = compiler->parser->vm;
   FnVariable variable;
@@ -551,6 +582,10 @@ static int recordVariable(Compiler* compiler, const char* name, int length,
   variable.index = index;
   variable.start = start;
   variable.end = -1;
+  // The compiler's own hidden locals ("seq ", "iter ") have names that no
+  // program can spell, so they are not the user's to inspect. They are still
+  // recorded: they hold stack slots.
+  variable.hidden = memchr(name, ' ', length) != NULL;
 
   FnVariableBuffer* variables = &compiler->fn->debug->variables;
   wrenFnVariableBufferWrite(vm, variables, variable);
@@ -623,6 +658,9 @@ static void initCompiler(Compiler* compiler, Parser* parser, Compiler* parent,
     compiler->scopeDepth = 0;
   }
   
+  compiler->frameFn = NULL;
+  compiler->frameOffset = 0;
+
   compiler->numAttributes = 0;
   compiler->attributes = wrenNewMap(parser->vm);
   compiler->fn = wrenNewFunction(parser->vm, parser->module,
@@ -1645,6 +1683,23 @@ static int addNamedUpvalue(Compiler* compiler, bool isLocal, int index,
 // not close over local variables.
 static int findUpvalue(Compiler* compiler, const char* name, int length)
 {
+  // Code compiled in a stopped frame's scope: the frame's own captured
+  // variables are this compiler's upvalues, at the same indexes.
+  if (compiler->frameFn != NULL)
+  {
+    FnVariableBuffer* variables = &compiler->frameFn->debug->variables;
+    for (int i = 0; i < variables->count; i++)
+    {
+      FnVariable* variable = &variables->data[i];
+      if (variable->start == -1 && (int)strlen(variable->name) == length &&
+          memcmp(variable->name, name, length) == 0)
+      {
+        return variable->index;
+      }
+    }
+    return -1;
+  }
+
   // If we are at the top level, we didn't find it.
   if (compiler->parent == NULL) return -1;
   
@@ -1822,6 +1877,18 @@ static void expression(Compiler* compiler);
 static void statement(Compiler* compiler);
 static void definition(Compiler* compiler);
 static void parsePrecedence(Compiler* compiler, Precedence precedence);
+
+// Records that a statement starts at the current end of the bytecode.
+static void recordStatement(Compiler* compiler)
+{
+  IntBuffer* statements = &compiler->fn->debug->statements;
+  int offset = compiler->fn->code.count;
+  if (statements->count > 0 && statements->data[statements->count - 1] == offset)
+  {
+    return;
+  }
+  wrenIntBufferWrite(compiler->parser->vm, statements, offset);
+}
 
 // Replaces the placeholder argument for a previous CODE_JUMP or CODE_JUMP_IF
 // instruction with an offset that jumps to the current end of bytecode.
@@ -2339,10 +2406,29 @@ static void field(Compiler* compiler, bool canAssign)
   }
   else
   {
-    // Look up the field, or implicitly define it.
-    field = wrenSymbolTableEnsure(compiler->parser->vm, &enclosingClass->fields,
-        compiler->parser->previous.start,
-        compiler->parser->previous.length);
+    if (enclosingClass->fieldsFixed)
+    {
+      // The class already exists: its fields are what they are.
+      field = wrenSymbolTableFind(&enclosingClass->fields,
+          compiler->parser->previous.start,
+          compiler->parser->previous.length);
+      if (field == -1)
+      {
+        error(compiler, "%s has no field named '%.*s'.",
+              enclosingClass->name != NULL ? enclosingClass->name->value
+                                           : "This class",
+              compiler->parser->previous.length,
+              compiler->parser->previous.start);
+        field = MAX_FIELDS;
+      }
+    }
+    else
+    {
+      // Look up the field, or implicitly define it.
+      field = wrenSymbolTableEnsure(compiler->parser->vm,
+          &enclosingClass->fields, compiler->parser->previous.start,
+          compiler->parser->previous.length);
+    }
 
     if (field >= MAX_FIELDS)
     {
@@ -2560,6 +2646,10 @@ static void super_(Compiler* compiler, bool canAssign)
     // Compile the superclass call.
     consume(compiler, TOKEN_NAME, "Expect method name after 'super.'.");
     namedCall(compiler, canAssign, CODE_SUPER_0);
+  }
+  else if (enclosingClass != NULL && enclosingClass->signature == NULL)
+  {
+    error(compiler, "Expect '.' and a method name after 'super'.");
   }
   else if (enclosingClass != NULL)
   {
@@ -3253,6 +3343,8 @@ static void whileStatement(Compiler* compiler)
 // Unlike expressions, statements do not leave a value on the stack.
 void statement(Compiler* compiler)
 {
+  recordStatement(compiler);
+
   if (match(compiler, TOKEN_BREAK))
   {
     if (compiler->loop == NULL)
@@ -3640,6 +3732,7 @@ static void classDefinition(Compiler* compiler, bool isForeign)
 
   ClassInfo classInfo;
   classInfo.isForeign = isForeign;
+  classInfo.fieldsFixed = false;
   classInfo.name = className;
 
   // Allocate attribute maps if necessary. 
@@ -3830,6 +3923,8 @@ static void variableDefinition(Compiler* compiler)
 // like the non-curly body of an if or while.
 void definition(Compiler* compiler)
 {
+  recordStatement(compiler);
+
   if(matchAttribute(compiler)) {
     definition(compiler);
     return;
@@ -3886,19 +3981,27 @@ ObjFn* wrenCompile(WrenVM* vm, ObjModule* module, const char* source,
   parser.next.length = 0;
   parser.next.line = 0;
   parser.next.value = UNDEFINED_VAL;
+  parser.current = parser.next;
+  parser.previous = parser.next;
 
   parser.printErrors = printErrors;
   parser.hasError = false;
-
-  // Read the first token into next
-  nextToken(&parser);
-  // Copy next -> current
-  nextToken(&parser);
+  parser.firstError = NULL;
+  parser.firstErrorSize = 0;
 
   int numExistingVariables = module->variables.count;
 
   Compiler compiler;
   initCompiler(&compiler, &parser, NULL, false);
+
+  // Lex the first tokens only now that the compiler roots their values: a
+  // name token allocates a string, and a collection before the compiler
+  // existed would free it.
+  // Read the first token into next
+  nextToken(&parser);
+  // Copy next -> current
+  nextToken(&parser);
+
   ignoreNewlines(&compiler);
 
   if (isExpression)
@@ -3942,6 +4045,172 @@ ObjFn* wrenCompile(WrenVM* vm, ObjModule* module, const char* source,
   }
   
   return endCompiler(&compiler, "(script)", 8);
+}
+
+ObjFn* wrenCompileInFrame(WrenVM* vm, ObjModule* module, const char* source,
+                         bool isExpression, const WrenFrameScope* scope,
+                         uint8_t* upvalues, char* errorBuffer,
+                         size_t errorSize)
+{
+  if (strncmp(source, "\xEF\xBB\xBF", 3) == 0) source += 3;
+
+  Parser parser;
+  parser.vm = vm;
+  parser.module = module;
+  parser.source = source;
+  parser.tokenStart = source;
+  parser.currentChar = source;
+  parser.currentLine = 1;
+  parser.numParens = 0;
+  parser.next.type = TOKEN_ERROR;
+  parser.next.start = source;
+  parser.next.length = 0;
+  parser.next.line = 0;
+  parser.next.value = UNDEFINED_VAL;
+  parser.current = parser.next;
+  parser.previous = parser.next;
+  parser.printErrors = false;
+  parser.hasError = false;
+  parser.firstError = errorBuffer;
+  parser.firstErrorSize = errorSize;
+  if (errorBuffer != NULL && errorSize > 0) errorBuffer[0] = '\0';
+
+  int numExistingVariables = module->variables.count;
+
+  // Module level. For a method, it is the class body, so `this`, fields and
+  // implicit self calls compile as they would inside the method.
+  Compiler outer;
+  initCompiler(&outer, &parser, NULL, false);
+  // Lexed once a compiler roots the tokens' values (see wrenCompile).
+  nextToken(&parser);
+  nextToken(&parser);
+
+  ClassInfo classInfo;
+  if (scope->isMethod)
+  {
+    classInfo.name = scope->fieldsClass != NULL ? scope->fieldsClass->name : NULL;
+    classInfo.classAttributes = NULL;
+    classInfo.methodAttributes = NULL;
+    classInfo.isForeign = false;
+    classInfo.inStatic = scope->isStatic;
+    classInfo.fieldsFixed = true;
+    classInfo.signature = NULL;
+    wrenSymbolTableInit(&classInfo.fields);
+    wrenIntBufferInit(&classInfo.methods);
+    wrenIntBufferInit(&classInfo.staticMethods);
+    outer.enclosingClass = &classInfo;
+
+    // The class's own fields, in index order (see classDefinition).
+    ObjString* names = scope->fieldsClass != NULL ? scope->fieldsClass->fieldNames
+                                                  : NULL;
+    if (names != NULL)
+    {
+      uint32_t start = 0;
+      for (uint32_t i = 0; i <= names->length; i++)
+      {
+        if (i < names->length && names->value[i] != ' ') continue;
+        if (i > start)
+        {
+          wrenSymbolTableAdd(vm, &classInfo.fields, names->value + start,
+                             i - start);
+        }
+        start = i + 1;
+      }
+    }
+  }
+
+  // The stopped frame: its locals in scope, at their own slots.
+  Compiler frame;
+  initCompiler(&frame, &parser, &outer, scope->isMethod);
+  frame.frameFn = scope->fn;
+  frame.frameOffset = scope->offset;
+  FnVariableBuffer* variables = &scope->fn->debug->variables;
+  for (int i = 0; i < variables->count; i++)
+  {
+    FnVariable* variable = &variables->data[i];
+    if (variable->start == -1) continue;
+    if (scope->offset < variable->start || scope->offset >= variable->end) continue;
+    if (variable->index >= MAX_LOCALS) continue;
+
+    while (frame.numLocals <= variable->index)
+    {
+      Local* gap = &frame.locals[frame.numLocals++];
+      gap->name = NULL;
+      gap->length = 0;
+      gap->depth = 0;
+      gap->isUpvalue = false;
+      gap->debugVariable = -1;
+    }
+    if (!variable->hidden)
+    {
+      frame.locals[variable->index].name = variable->name;
+      frame.locals[variable->index].length = (int)strlen(variable->name);
+    }
+  }
+  frame.numSlots = frame.numLocals;
+
+  // The code itself: a function closing over the frame's variables.
+  Compiler compiler;
+  initCompiler(&compiler, &parser, &frame, false);
+  ignoreNewlines(&compiler);
+
+  if (isExpression)
+  {
+    expression(&compiler);
+    consume(&compiler, TOKEN_EOF, "Expect end of expression.");
+  }
+  else
+  {
+    while (!match(&compiler, TOKEN_EOF))
+    {
+      definition(&compiler);
+      if (!matchLine(&compiler))
+      {
+        consume(&compiler, TOKEN_EOF, "Expect end of file.");
+        break;
+      }
+    }
+    emitOp(&compiler, CODE_NULL);
+  }
+  emitOp(&compiler, CODE_RETURN);
+
+  for (int i = numExistingVariables; i < parser.module->variables.count; i++)
+  {
+    if (IS_NUM(parser.module->variables.data[i]))
+    {
+      parser.previous.type = TOKEN_NAME;
+      parser.previous.start = parser.module->variableNames.data[i]->value;
+      parser.previous.length = parser.module->variableNames.data[i]->length;
+      parser.previous.line = (int)AS_NUM(parser.module->variables.data[i]);
+      error(&compiler, "Variable is used but not defined.");
+    }
+  }
+
+  ObjFn* fn = endCompiler(&compiler, "(evaluate)", 10);
+  if (fn != NULL)
+  {
+    for (int i = 0; i < fn->numUpvalues; i++)
+    {
+      upvalues[i * 2] = compiler.upvalues[i].isLocal ? 1 : 0;
+      upvalues[i * 2 + 1] = (uint8_t)compiler.upvalues[i].index;
+    }
+  }
+
+  if (scope->isMethod)
+  {
+    wrenSymbolTableClear(vm, &classInfo.fields);
+    wrenIntBufferClear(vm, &classInfo.methods);
+    wrenIntBufferClear(vm, &classInfo.staticMethods);
+  }
+  vm->compiler = NULL;
+
+  // Field indexes and super calls, as if it were one of the class's methods.
+  if (fn != NULL && scope->isMethod && !scope->isStatic &&
+      scope->fieldsClass != NULL && scope->fieldsClass->superclass != NULL)
+  {
+    wrenBindMethodCode(scope->fieldsClass, fn);
+  }
+  return fn;
 }
 
 void wrenBindMethodCode(ObjClass* classObj, ObjFn* fn)

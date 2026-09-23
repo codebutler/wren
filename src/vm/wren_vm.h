@@ -134,6 +134,21 @@ struct WrenVM
   // True while the line hook runs. The innermost frame's ip then points at
   // the instruction about to execute rather than past the last one.
   bool inLineHook;
+
+  // The error hook (wrenSetErrorHook), and whether it is running.
+  WrenErrorHookFn errorHook;
+  bool inErrorHook;
+
+  // Set by wrenSetFrameLine inside the error hook: the error was discarded
+  // and execution continues where the frame was moved to.
+  bool errorResumed;
+
+  // While a hook runs: the stopped fiber's stack top (as an offset) to
+  // restore when it returns. wrenSetFrameLine lowers it.
+  int hookStackTop;
+
+  // The name wrenGetInstanceField last returned.
+  char fieldName[MAX_VARIABLE_NAME + 16];
 };
 
 // A generic allocation function that handles all explicit memory management.

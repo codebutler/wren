@@ -20,6 +20,26 @@
 - Record each class's own field names at class definition, so fields can be
   matched by name (`FIELD_NAMES` instruction, emitted only for classes with
   fields).
+- Add an error hook, `wrenSetErrorHook`: called for a runtime error no
+  `Fiber.try` will catch, before anything unwinds, so a debugger can stop on
+  the failing line with the stack intact.
+- Add set next statement, `wrenSetFrameLine`: move the stopped innermost frame
+  to the first statement on a line of the same function. The compiler now
+  records statement start offsets, and records its hidden locals (flagged, not
+  shown) so a move can check which locals are in scope. From the error hook it
+  discards the error and resumes there.
+- Add `wrenEvaluateInFrame` (compile and run an expression or statements in a
+  stopped frame's scope: locals, captured variables, `this`, the defining
+  class's fields; assignments change the frame) and `wrenInterpretInHook`
+  (run top-level code while a fiber is stopped in a hook).
+- Add `wrenGetInstanceFieldCount`, `wrenGetInstanceField` (with the field's
+  name) and `wrenGetMapEntry` for inspecting values.
+
+### Fixes
+- `wrenEnsureSlots` clears the slots it adds; they could hold stale values the
+  collector then traced.
+- The compiler lexes its first two tokens after it is rooted; under
+  `WREN_DEBUG_GC_STRESS` the first name token's string was freed before use.
 
 ## 0.4.0
 

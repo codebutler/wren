@@ -35,6 +35,46 @@ typedef struct sCompiler Compiler;
 ObjFn* wrenCompile(WrenVM* vm, ObjModule* module, const char* source,
                    bool isExpression, bool printErrors);
 
+// The most upvalues a function has (MAX_UPVALUES in wren_compiler.c).
+#define WREN_FRAME_MAX_UPVALUES 256
+
+// The scope of a stopped call frame, for [wrenCompileInFrame].
+typedef struct
+{
+  // The function the frame is running, and the bytecode offset it is at. The
+  // offset decides which locals are in scope.
+  ObjFn* fn;
+  int offset;
+
+  // Whether the frame runs a method (slot 0 is `this`), and a static one.
+  bool isMethod;
+  bool isStatic;
+
+  // For a method, the class that defines it: the code may read and assign
+  // that class's own fields. NULL when unknown (fields are then an error).
+  ObjClass* fieldsClass;
+} WrenFrameScope;
+
+// Compiles [source] as a function that runs in the scope of a stopped call
+// frame: its locals and captured variables are the function's upvalues, so
+// reading one reads the frame's variable and assigning one changes it. For a
+// method, `this`, the defining class's fields and implicit self calls work
+// as they do in the method. Names not found there are module variables.
+//
+// If [isExpression] is true, [source] is one expression and the function
+// returns its value; otherwise it is statements and returns null.
+//
+// Returns NULL on a compile error, with the first error's message in [errorBuffer]
+// (nothing is reported to the error callback). Otherwise [upvalues] receives
+// two bytes per upvalue of the function: 1 if it captures the frame's local
+// in that slot, 0 if it captures the frame's upvalue with that index. It must
+// have room for WREN_FRAME_MAX_UPVALUES * 2 bytes. The caller must root the result
+// before allocating.
+ObjFn* wrenCompileInFrame(WrenVM* vm, ObjModule* module, const char* source,
+                         bool isExpression, const WrenFrameScope* scope,
+                         uint8_t* upvalues, char* errorBuffer,
+                         size_t errorSize);
+
 // When a class is defined, its superclass is not known until runtime since
 // class definitions are just imperative statements. Most of the bytecode for a
 // a method doesn't care, but there are two places where it matters:

@@ -638,6 +638,89 @@ WREN_API const char* wrenGetModuleVariableAt(WrenVM* vm, const char* module,
 // by the VM and stays valid until the next call into it.
 WREN_API const char* wrenGetSlotClassName(WrenVM* vm, int slot);
 
+// Returns the number of fields of the instance in [slot], inherited ones
+// included, or 0 if the slot does not hold an instance of a Wren class.
+WREN_API int wrenGetInstanceFieldCount(WrenVM* vm, int slot);
+
+// Stores field [index] of the instance in [slot] in [valueSlot] and returns
+// its name ("_count"), or returns NULL if [index] is out of range. Inherited
+// fields come first. The name is owned by the VM and stays valid until the
+// next call into it.
+WREN_API const char* wrenGetInstanceField(WrenVM* vm, int slot, int index,
+                                          int valueSlot);
+
+// Stores the key and value of entry [index] of the map in [mapSlot], in the
+// map's iteration order, in [keySlot] and [valueSlot]. Returns false if
+// [index] is out of range.
+WREN_API bool wrenGetMapEntry(WrenVM* vm, int mapSlot, int index, int keySlot,
+                              int valueSlot);
+
+// A function the VM calls when a runtime error is about to end the running
+// fiber and no fiber run with `try` will catch it: before anything unwinds,
+// so the stack inspection functions still describe the failing call, with
+// the innermost frame at the instruction that failed. [message] is the error
+// if it is a string, else "[error object]".
+//
+// The hook has the rules of a [WrenLineHookFn]. When it returns, the error
+// unwinds as usual, unless the hook moved execution with [wrenSetFrameLine]:
+// then the error is discarded and the fiber continues there.
+typedef void (*WrenErrorHookFn)(WrenVM* vm, const char* message);
+
+// Sets the error hook, or disables it when [hook] is NULL.
+WREN_API void wrenSetErrorHook(WrenVM* vm, WrenErrorHookFn hook);
+
+typedef enum
+{
+  // Execution continues at the start of the line.
+  WREN_SET_LINE_SUCCESS,
+
+  // Not called from a line hook or an error hook.
+  WREN_SET_LINE_NOT_STOPPED,
+
+  // No statement of the innermost frame's function starts on that line (a
+  // blank line or a comment, the middle of a multi-line statement, another
+  // function).
+  WREN_SET_LINE_NO_STATEMENT,
+
+  // A local variable in scope at that line is not in scope here: the line is
+  // inside a block or loop the frame is not in.
+  WREN_SET_LINE_OUT_OF_SCOPE
+} WrenSetLineResult;
+
+// Moves the stopped fiber's innermost frame to the first statement that
+// starts on [line] of the same function, so it runs from there when the hook
+// returns ("set next statement"). Only a line hook or an error hook may call
+// it. The line hook is not called again for that line. Locals keep their
+// values; any the frame leaves the scope of are discarded, and a variable a
+// closure captured from them is closed.
+WREN_API WrenSetLineResult wrenSetFrameLine(WrenVM* vm, int line);
+
+// Like [wrenInterpret], from inside a line hook or an error hook: runs
+// [source] in [module] on a new fiber while the stopped fiber waits, then
+// returns to the hook. The line and error hooks are not called while it
+// runs; the interrupt hook is. Errors are reported as [wrenInterpret]
+// reports them. Returns WREN_RESULT_RUNTIME_ERROR at once outside a hook.
+WREN_API WrenInterpretResult wrenInterpretInHook(WrenVM* vm,
+                                                 const char* module,
+                                                 const char* source);
+
+// From inside a line hook or an error hook, compiles and runs [source] in the
+// scope of call frame [frame] (0 is the innermost): its local variables, the
+// variables it captured, and, in a method, `this`, the fields of the class
+// defining the method and implicit calls on `this`. Other names are the
+// frame's module variables. Assigning a local changes the frame's variable.
+//
+// If [isExpression] is true, [source] is one expression and its value is
+// stored in [slot]. Otherwise it is a series of statements and [slot]
+// receives null. Nothing is reported to the error callback: on a compile
+// error, [slot] holds the message; on a runtime error, the error value.
+//
+// The code runs as [wrenInterpretInHook] runs it. Any method it calls really
+// runs, side effects included.
+WREN_API WrenInterpretResult wrenEvaluateInFrame(WrenVM* vm, int frame,
+                                                 const char* source,
+                                                 bool isExpression, int slot);
+
 // Live code replacement ---------------------------------------------------------
 
 typedef enum

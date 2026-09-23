@@ -408,9 +408,51 @@ static void callForeign(WrenVM* vm, ObjFiber* fiber,
 //
 // Walks the call chain of fibers, aborting each one until it hits a fiber that
 // handles the error. If none do, tells the VM to stop.
+// Whether a fiber in the call chain of [fiber] was run with "try" and will
+// catch an error.
+static bool isErrorCaught(ObjFiber* fiber)
+{
+  for (; fiber != NULL; fiber = fiber->caller)
+  {
+    if (fiber->state == FIBER_TRY) return true;
+  }
+  return false;
+}
+
+// Runs the error hook for the error in the running fiber, before anything
+// unwinds. Returns true if the hook moved execution with wrenSetFrameLine,
+// discarding the error.
+static bool callErrorHook(WrenVM* vm)
+{
+  ObjFiber* fiber = vm->fiber;
+  if (vm->errorHook == NULL || vm->inErrorHook || isErrorCaught(fiber))
+  {
+    return false;
+  }
+
+  Value* apiStack = vm->apiStack;
+  vm->hookStackTop = (int)(fiber->stackTop - fiber->stack);
+  vm->apiStack = fiber->stackTop;
+  vm->inErrorHook = true;
+  vm->errorResumed = false;
+
+  vm->errorHook(vm, IS_STRING(fiber->error) ? AS_CSTRING(fiber->error)
+                                            : "[error object]");
+
+  bool resumed = vm->errorResumed;
+  vm->inErrorHook = false;
+  vm->errorResumed = false;
+  vm->inLineHook = false;
+  fiber->stackTop = fiber->stack + vm->hookStackTop;
+  vm->apiStack = apiStack;
+  return resumed;
+}
+
 static void runtimeError(WrenVM* vm)
 {
   ASSERT(wrenHasError(vm->fiber), "Should only call this after an error.");
+
+  if (callErrorHook(vm)) return;
 
   ObjFiber* current = vm->fiber;
   Value error = current->error;
@@ -843,15 +885,16 @@ static void callLineHook(WrenVM* vm, ObjFiber* fiber, ObjFn* fn, int line)
 
   const char* module = fn->module->name == NULL ? NULL : fn->module->name->value;
   Value* apiStack = vm->apiStack;
-  int stackTop = (int)(fiber->stackTop - fiber->stack);
+  vm->hookStackTop = (int)(fiber->stackTop - fiber->stack);
   vm->apiStack = fiber->stackTop;
   vm->inLineHook = true;
 
   vm->lineHook(vm, module, line);
 
   vm->inLineHook = false;
-  // The hook may have grown the stack, so restore the top by offset.
-  fiber->stackTop = fiber->stack + stackTop;
+  // The hook may have grown the stack, so restore the top by offset. It may
+  // also have lowered it (wrenSetFrameLine).
+  fiber->stackTop = fiber->stack + vm->hookStackTop;
   vm->apiStack = apiStack;
 }
 
@@ -1170,7 +1213,11 @@ void wrenEnsureSlots(WrenVM* vm, int numSlots)
   // Grow the stack if needed.
   int needed = (int)(vm->apiStack - vm->fiber->stack) + numSlots;
   wrenEnsureStack(vm, vm->fiber, needed);
-  
+
+  // The new slots may hold whatever was last on the stack there. Clear them
+  // before the collector can see them: a value in a slot is a root.
+  for (int i = currentSize; i < numSlots; i++) vm->apiStack[i] = NULL_VAL;
+
   vm->fiber->stackTop = vm->apiStack + numSlots;
 }
 
@@ -1523,6 +1570,11 @@ void wrenSetLineHook(WrenVM* vm, WrenLineHookFn hook)
   vm->hookFiber = NULL;
 }
 
+void wrenSetErrorHook(WrenVM* vm, WrenErrorHookFn hook)
+{
+  vm->errorHook = hook;
+}
+
 void wrenSetInterruptHook(WrenVM* vm, WrenInterruptFn hook, int interval)
 {
   ASSERT(interval > 0, "Interval must be positive.");
@@ -1534,7 +1586,8 @@ void wrenSetInterruptHook(WrenVM* vm, WrenInterruptFn hook, int interval)
 // Finds call frame [index] of the running fiber and the fibers that called it,
 // innermost first. Skips the stubs the C API uses to call into Wren. Sets
 // [offset] to the bytecode offset of the instruction the frame is executing.
-static CallFrame* findFrame(WrenVM* vm, int index, int* offset)
+static CallFrame* findFrameIn(WrenVM* vm, int index, int* offset,
+                              ObjFiber** fiberOut)
 {
   if (index < 0) return NULL;
 
@@ -1554,11 +1607,17 @@ static CallFrame* findFrame(WrenVM* vm, int index, int* offset)
                       i == fiber->numFrames - 1;
       *offset = (int)(frame->ip - fn->code.data) - (starting ? 0 : 1);
       if (*offset < 0) *offset = 0;
+      if (fiberOut != NULL) *fiberOut = fiber;
       return frame;
     }
   }
 
   return NULL;
+}
+
+static CallFrame* findFrame(WrenVM* vm, int index, int* offset)
+{
+  return findFrameIn(vm, index, offset, NULL);
 }
 
 int wrenGetStackFrameCount(WrenVM* vm)
@@ -1592,6 +1651,8 @@ bool wrenGetStackFrame(WrenVM* vm, int frame, WrenStackFrame* out)
 // Returns whether [variable] of a function is visible at bytecode [offset].
 static bool isVariableVisible(FnVariable* variable, int offset)
 {
+  if (variable->hidden) return false;
+
   // Captured variables are visible for the whole function.
   if (variable->start == -1) return true;
   return offset >= variable->start && offset < variable->end;
@@ -1681,6 +1742,322 @@ const char* wrenGetSlotClassName(WrenVM* vm, int slot)
 {
   validateApiSlot(vm, slot);
   return wrenGetClassInline(vm, vm->apiStack[slot])->name->value;
+}
+
+int wrenGetInstanceFieldCount(WrenVM* vm, int slot)
+{
+  validateApiSlot(vm, slot);
+  Value value = vm->apiStack[slot];
+  if (!IS_INSTANCE(value)) return 0;
+  return AS_INSTANCE(value)->obj.classObj->numFields;
+}
+
+const char* wrenGetInstanceField(WrenVM* vm, int slot, int index,
+                                 int valueSlot)
+{
+  validateApiSlot(vm, slot);
+  validateApiSlot(vm, valueSlot);
+  Value value = vm->apiStack[slot];
+  if (!IS_INSTANCE(value)) return NULL;
+
+  ObjInstance* instance = AS_INSTANCE(value);
+  ObjClass* owner = instance->obj.classObj;
+  if (index < 0 || index >= owner->numFields) return NULL;
+
+  // Inherited fields come first: find the class that declares this one.
+  while (owner->superclass != NULL && index < owner->superclass->numFields)
+  {
+    owner = owner->superclass;
+  }
+  int own = index - (owner->superclass != NULL ? owner->superclass->numFields
+                                               : 0);
+
+  snprintf(vm->fieldName, sizeof(vm->fieldName), "_field%d", index);
+  ObjString* names = owner->fieldNames;
+  if (names != NULL)
+  {
+    uint32_t start = 0;
+    int field = 0;
+    for (uint32_t i = 0; i <= names->length; i++)
+    {
+      if (i < names->length && names->value[i] != ' ') continue;
+      if (field++ == own)
+      {
+        snprintf(vm->fieldName, sizeof(vm->fieldName), "%.*s",
+                 (int)(i - start), names->value + start);
+        break;
+      }
+      start = i + 1;
+    }
+  }
+
+  setSlot(vm, valueSlot, instance->fields[index]);
+  return vm->fieldName;
+}
+
+bool wrenGetMapEntry(WrenVM* vm, int mapSlot, int index, int keySlot,
+                     int valueSlot)
+{
+  validateApiSlot(vm, mapSlot);
+  validateApiSlot(vm, keySlot);
+  validateApiSlot(vm, valueSlot);
+  ASSERT(IS_MAP(vm->apiStack[mapSlot]), "Slot must hold a map.");
+
+  ObjMap* map = AS_MAP(vm->apiStack[mapSlot]);
+  if (index < 0) return false;
+  for (uint32_t i = 0; i < map->capacity; i++)
+  {
+    MapEntry* entry = &map->entries[i];
+    if (IS_UNDEFINED(entry->key)) continue;
+    if (index-- > 0) continue;
+
+    Value key = entry->key;
+    Value entryValue = entry->value;
+    setSlot(vm, keySlot, key);
+    setSlot(vm, valueSlot, entryValue);
+    return true;
+  }
+  return false;
+}
+
+// Stopping, moving and evaluating ---------------------------------------------
+
+static bool isStopped(WrenVM* vm)
+{
+  return vm->inLineHook || vm->inErrorHook;
+}
+
+WrenSetLineResult wrenSetFrameLine(WrenVM* vm, int line)
+{
+  if (!isStopped(vm) || vm->fiber == NULL) return WREN_SET_LINE_NOT_STOPPED;
+
+  // Only the innermost frame of the stopped fiber: its ip is where the
+  // program is, and nothing above it expects a value back from it.
+  int offset;
+  ObjFiber* fiber;
+  CallFrame* frame = findFrameIn(vm, 0, &offset, &fiber);
+  if (frame == NULL || fiber != vm->fiber ||
+      frame != &fiber->frames[fiber->numFrames - 1])
+  {
+    return WREN_SET_LINE_NOT_STOPPED;
+  }
+
+  ObjFn* fn = frame->closure->fn;
+  IntBuffer* statements = &fn->debug->statements;
+  int target = -1;
+  for (int i = 0; i < statements->count; i++)
+  {
+    int at = statements->data[i];
+    if (at < fn->debug->sourceLines.count &&
+        fn->debug->sourceLines.data[at] == line)
+    {
+      target = at;
+      break;
+    }
+  }
+  if (target == -1) return WREN_SET_LINE_NO_STATEMENT;
+
+  // At a statement start only locals are on the stack. Every local in scope
+  // there must be in scope here too (jumping out of a block is fine, into
+  // one is not): then its slot already holds its value, and the stack is
+  // cut back to the target's locals.
+  int height = 1;
+  FnVariableBuffer* variables = &fn->debug->variables;
+  for (int i = 0; i < variables->count; i++)
+  {
+    FnVariable* variable = &variables->data[i];
+    if (variable->start == -1) continue;
+    if (target < variable->start || target >= variable->end) continue;
+    if (offset < variable->start || offset >= variable->end)
+    {
+      return WREN_SET_LINE_OUT_OF_SCOPE;
+    }
+    if (variable->index + 1 > height) height = variable->index + 1;
+  }
+
+  Value* top = frame->stackStart + height;
+  if (top > fiber->stackTop) return WREN_SET_LINE_OUT_OF_SCOPE;
+  closeUpvalues(fiber, top);
+  vm->hookStackTop = (int)(top - fiber->stack);
+  frame->ip = fn->code.data + target;
+
+  // The line starts now: the line hook must not report it again.
+  vm->hookFiber = fiber;
+  vm->hookDepth = fiber->numFrames;
+  vm->hookLine = line;
+  vm->inLineHook = true;
+
+  if (vm->inErrorHook)
+  {
+    fiber->error = NULL_VAL;
+    vm->errorResumed = true;
+  }
+  return WREN_SET_LINE_SUCCESS;
+}
+
+// Runs [closure] on a new fiber while another fiber is stopped in a hook, then
+// puts everything back. The line and error hooks are off meanwhile. If [slot]
+// is not negative, it receives the result, or the error if one aborted it.
+// With [quiet], a runtime error is not reported to the error callback.
+static WrenInterpretResult runNested(WrenVM* vm, ObjClosure* closure,
+                                     bool quiet, int slot)
+{
+  ObjFiber* stopped = vm->fiber;
+  Value* apiStack = vm->apiStack;
+  WrenLineHookFn lineHook = vm->lineHook;
+  WrenErrorHookFn errorHook = vm->errorHook;
+  ObjFiber* hookFiber = vm->hookFiber;
+  int hookDepth = vm->hookDepth;
+  int hookLine = vm->hookLine;
+  int hookStackTop = vm->hookStackTop;
+  bool inLineHook = vm->inLineHook;
+  bool inErrorHook = vm->inErrorHook;
+  bool errorResumed = vm->errorResumed;
+  WrenErrorFn errorFn = vm->config.errorFn;
+
+  wrenPushRoot(vm, (Obj*)closure);
+  ObjFiber* fiber = wrenNewFiber(vm, closure);
+  wrenPopRoot(vm); // closure.
+  if (stopped != NULL) wrenPushRoot(vm, (Obj*)stopped);
+  wrenPushRoot(vm, (Obj*)fiber);
+
+  vm->lineHook = NULL;
+  vm->errorHook = NULL;
+  vm->inLineHook = false;
+  vm->inErrorHook = false;
+  vm->apiStack = NULL;
+  if (quiet) vm->config.errorFn = NULL;
+
+  WrenInterpretResult result = runInterpreter(vm, fiber);
+
+  vm->config.errorFn = errorFn;
+  vm->fiber = stopped;
+  vm->apiStack = apiStack;
+  vm->lineHook = lineHook;
+  vm->errorHook = errorHook;
+  vm->hookFiber = hookFiber;
+  vm->hookDepth = hookDepth;
+  vm->hookLine = hookLine;
+  vm->hookStackTop = hookStackTop;
+  vm->inLineHook = inLineHook;
+  vm->inErrorHook = inErrorHook;
+  vm->errorResumed = errorResumed;
+
+  if (slot >= 0)
+  {
+    setSlot(vm, slot, result == WREN_RESULT_SUCCESS ? fiber->stack[0]
+                                                    : fiber->error);
+  }
+
+  wrenPopRoot(vm); // fiber.
+  if (stopped != NULL) wrenPopRoot(vm);
+  return result;
+}
+
+WrenInterpretResult wrenInterpretInHook(WrenVM* vm, const char* module,
+                                        const char* source)
+{
+  if (!isStopped(vm)) return WREN_RESULT_RUNTIME_ERROR;
+
+  ObjClosure* closure = wrenCompileSource(vm, module, source, false, true);
+  if (closure == NULL) return WREN_RESULT_COMPILE_ERROR;
+  return runNested(vm, closure, false, -1);
+}
+
+// The class that defines [closure] as one of its methods, looking from
+// [classObj] up. Subclasses copy their superclass's methods, so the defining
+// class is the farthest one that has it. A closure no class has any more (a
+// frame still running a method that edit and continue replaced) is matched
+// by its signature instead.
+static ObjClass* definingClass(WrenVM* vm, ObjClass* classObj,
+                               ObjClosure* closure)
+{
+  ObjClass* found = NULL;
+  for (ObjClass* c = classObj; c != NULL; c = c->superclass)
+  {
+    for (int i = 0; i < c->methods.count; i++)
+    {
+      Method* method = &c->methods.data[i];
+      if (method->type == METHOD_BLOCK && method->as.closure == closure)
+      {
+        found = c;
+        break;
+      }
+    }
+  }
+  if (found != NULL || closure->fn->debug->name == NULL) return found;
+
+  const char* name = closure->fn->debug->name;
+  int symbol = wrenSymbolTableFind(&vm->methodNames, name, strlen(name));
+  if (symbol == -1) return NULL;
+  for (ObjClass* c = classObj; c != NULL; c = c->superclass)
+  {
+    if (symbol < c->methods.count && c->methods.data[symbol].type == METHOD_BLOCK)
+    {
+      found = c;
+    }
+  }
+  return found;
+}
+
+WrenInterpretResult wrenEvaluateInFrame(WrenVM* vm, int frame,
+                                        const char* source, bool isExpression,
+                                        int slot)
+{
+  validateApiSlot(vm, slot);
+
+  int offset;
+  ObjFiber* fiber;
+  CallFrame* callFrame = isStopped(vm) ? findFrameIn(vm, frame, &offset, &fiber)
+                                       : NULL;
+  if (callFrame == NULL)
+  {
+    setSlot(vm, slot, CONST_STRING(vm, "No such frame."));
+    return WREN_RESULT_RUNTIME_ERROR;
+  }
+
+  ObjFn* fn = callFrame->closure->fn;
+  WrenFrameScope scope;
+  scope.fn = fn;
+  scope.offset = offset;
+  FnVariableBuffer* variables = &fn->debug->variables;
+  scope.isMethod = variables->count > 0 && variables->data[0].index == 0 &&
+                   variables->data[0].start == 0 &&
+                   strcmp(variables->data[0].name, "this") == 0;
+  Value receiver = callFrame->stackStart[0];
+  scope.isStatic = scope.isMethod && IS_CLASS(receiver);
+  scope.fieldsClass = NULL;
+  if (scope.isMethod && !scope.isStatic)
+  {
+    scope.fieldsClass = definingClass(vm, wrenGetClassInline(vm, receiver),
+                                      callFrame->closure);
+  }
+
+  uint8_t upvalues[WREN_FRAME_MAX_UPVALUES * 2];
+  char message[256];
+  ObjFn* evalFn = wrenCompileInFrame(vm, fn->module, source, isExpression,
+                                     &scope, upvalues, message,
+                                     sizeof(message));
+  if (evalFn == NULL)
+  {
+    setSlot(vm, slot, wrenNewString(vm, message));
+    return WREN_RESULT_COMPILE_ERROR;
+  }
+
+  wrenPushRoot(vm, (Obj*)evalFn);
+  ObjClosure* closure = wrenNewClosure(vm, evalFn);
+  wrenPushRoot(vm, (Obj*)closure);
+  for (int i = 0; i < evalFn->numUpvalues; i++)
+  {
+    int index = upvalues[i * 2 + 1];
+    closure->upvalues[i] = upvalues[i * 2]
+        ? captureUpvalue(vm, fiber, callFrame->stackStart + index)
+        : callFrame->closure->upvalues[index];
+  }
+  wrenPopRoot(vm); // closure.
+  wrenPopRoot(vm); // evalFn.
+
+  return runNested(vm, closure, true, slot);
 }
 
 // Live code replacement -------------------------------------------------------

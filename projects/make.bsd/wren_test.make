@@ -116,6 +116,7 @@ OBJECTS += $(OBJDIR)/call.o
 OBJECTS += $(OBJDIR)/call_calls_foreign.o
 OBJECTS += $(OBJDIR)/call_wren_call_root.o
 OBJECTS += $(OBJDIR)/debug.o
+OBJECTS += $(OBJDIR)/debugger.o
 OBJECTS += $(OBJDIR)/replace_methods.o
 OBJECTS += $(OBJDIR)/error.o
 OBJECTS += $(OBJDIR)/foreign_class.o
@@ -208,6 +209,9 @@ $(OBJDIR)/call_wren_call_root.o: ../../test/api/call_wren_call_root.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/debug.o: ../../test/api/debug.c
+	@echo $(notdir $<)
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/debugger.o: ../../test/api/debugger.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/replace_methods.o: ../../test/api/replace_methods.c
