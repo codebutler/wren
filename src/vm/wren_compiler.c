@@ -2964,6 +2964,7 @@ static int getByteCountForArguments(const uint8_t* bytecode,
     case CODE_FOREIGN_CLASS:
     case CODE_END_MODULE:
     case CODE_END_CLASS:
+    case CODE_FIELD_NAMES:
       return 0;
 
     case CODE_LOAD_LOCAL:
@@ -3687,6 +3688,31 @@ static void classDefinition(Compiler* compiler, bool isForeign)
     // so we put it inside this condition. Later, we can always
     // emit it and use it as needed.
     emitOp(compiler, CODE_END_CLASS);
+  }
+
+  // Record the names of the class's own fields on the class, so an embedder
+  // can tell which field an index is (see wrenReplaceMethods). Fields are
+  // numbered in the order the class body first uses them, which is the order
+  // of the symbol table.
+  if (!isForeign && classInfo.fields.count > 0)
+  {
+    WrenVM* vm = compiler->parser->vm;
+    ByteBuffer names;
+    wrenByteBufferInit(&names);
+    for (int i = 0; i < classInfo.fields.count; i++)
+    {
+      ObjString* field = classInfo.fields.data[i];
+      if (i > 0) wrenByteBufferWrite(vm, &names, ' ');
+      for (uint32_t j = 0; j < field->length; j++)
+      {
+        wrenByteBufferWrite(vm, &names, (uint8_t)field->value[j]);
+      }
+    }
+    emitConstant(compiler,
+                 wrenNewStringLength(vm, (const char*)names.data, names.count));
+    wrenByteBufferClear(vm, &names);
+    loadVariable(compiler, classVariable);
+    emitOp(compiler, CODE_FIELD_NAMES);
   }
 
   // Update the class with the number of fields.

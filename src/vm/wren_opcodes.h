@@ -173,6 +173,10 @@ OPCODE(CLASS, -1)
 // Atm the stack contains the class and the ClassAttributes (or null).
 OPCODE(END_CLASS, -2)
 
+// Records the names of a class's own fields, in field-index order. The stack
+// contains a string of the names separated by spaces, then the class.
+OPCODE(FIELD_NAMES, -2)
+
 // Creates a foreign class. Top of stack is the superclass. Below that is a
 // string for the name of the class.
 OPCODE(FOREIGN_CLASS, -1)

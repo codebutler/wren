@@ -638,4 +638,54 @@ WREN_API const char* wrenGetModuleVariableAt(WrenVM* vm, const char* module,
 // by the VM and stays valid until the next call into it.
 WREN_API const char* wrenGetSlotClassName(WrenVM* vm, int slot);
 
+// Live code replacement ---------------------------------------------------------
+
+typedef enum
+{
+  // The methods were replaced.
+  WREN_REPLACE_SUCCESS,
+
+  // [module] is not loaded, or one of the names is not a class defined in it.
+  WREN_REPLACE_NOT_FOUND,
+
+  // The two names are the same class, or one of them is a foreign class.
+  WREN_REPLACE_UNSUPPORTED,
+
+  // The classes have different superclasses.
+  WREN_REPLACE_SUPERCLASS_CHANGED,
+
+  // The classes declare different fields: added, removed, renamed, or first
+  // used in a different order (a field's index is the order of its first use).
+  WREN_REPLACE_FIELDS_CHANGED,
+
+  // The target class defines a method the source class does not. This
+  // includes a method whose arity changed, which is a different signature.
+  WREN_REPLACE_METHOD_REMOVED
+} WrenReplaceResult;
+
+// Replaces the method bodies of class [target] with those of class [source],
+// both top-level variables of resolved [module]. Instances of [target] and of
+// its subclasses keep their fields and start calling the new methods at once;
+// a call that is already running keeps executing the old body until it
+// returns. Compile the replacement as a new class in the same module, with
+// the same superclass, so its methods see the same module variables.
+//
+// Every method [source] defines itself, instance and static, replaces
+// [target]'s; methods [source] adds are added. A subclass of [target] that
+// inherited a replaced method gets the new one, and one that overrides it
+// keeps its override. Static fields (`__name`) keep their values: a new method
+// that uses a static field [target] already has shares it.
+//
+// Nothing changes unless the result is WREN_REPLACE_SUCCESS. When the result
+// is WREN_REPLACE_FIELDS_CHANGED or WREN_REPLACE_METHOD_REMOVED and [detail] is
+// not NULL, it is set to a VM-owned string naming the first field or method
+// signature that differs (for example "_count" or "update(_)"), valid until the
+// next call into the VM.
+//
+// Foreign methods in [source] are bound under [source]'s class name.
+WREN_API WrenReplaceResult wrenReplaceMethods(WrenVM* vm, const char* module,
+                                              const char* target,
+                                              const char* source,
+                                              const char** detail);
+
 #endif

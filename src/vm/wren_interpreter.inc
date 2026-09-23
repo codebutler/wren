@@ -551,6 +551,14 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
       DISPATCH();
     }
 
+    CASE_CODE(FIELD_NAMES):
+    {
+      AS_CLASS(PEEK())->fieldNames = AS_STRING(PEEK2());
+      DROP();
+      DROP();
+      DISPATCH();
+    }
+
     CASE_CODE(CLASS):
     {
       createClass(vm, READ_BYTE(), NULL);

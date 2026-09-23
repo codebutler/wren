@@ -435,6 +435,10 @@ struct sObjClass
   
   // The ClassAttribute for the class, if any
   Value attributes;
+
+  // The names of the fields this class declares itself (not the inherited
+  // ones), separated by spaces, in field-index order. NULL when it has none.
+  ObjString* fieldNames;
 };
 
 typedef struct

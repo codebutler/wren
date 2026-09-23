@@ -11,6 +11,15 @@
   `wrenGetStackFrame`, `wrenGetFrameVariableCount`, `wrenGetFrameVariable`,
   `wrenGetModuleVariableCount`, `wrenGetModuleVariableAt` and
   `wrenGetSlotClassName`.
+- Add live method replacement for edit-and-continue, `wrenReplaceMethods`. It
+  replaces a class's method bodies with those of another class compiled in the
+  same module: instances keep their fields, subclasses that inherited a
+  replaced method get the new one, static fields keep their values, and a
+  running call finishes its old body. It refuses, changing nothing, when the
+  superclass or the fields differ or a method would be removed.
+- Record each class's own field names at class definition, so fields can be
+  matched by name (`FIELD_NAMES` instruction, emitted only for classes with
+  fields).
 
 ## 0.4.0
 

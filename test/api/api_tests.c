@@ -49,6 +49,9 @@ WrenForeignMethodFn APITest_bindForeignMethod(
   method = newVMBindMethod(fullName);
   if (method != NULL) return method;
 
+  method = replaceMethodsBindMethod(fullName);
+  if (method != NULL) return method;
+
   method = resolutionBindMethod(fullName);
   if (method != NULL) return method;
 
