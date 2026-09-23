@@ -50,10 +50,43 @@ static void multipleInterpretCalls(WrenVM* vm)
   wrenFreeVM(otherVM);
 }
 
+// Collects everything the stress VM prints.
+static char stressOutput[4096];
+
+static void stressWrite(WrenVM* vm, const char* text)
+{
+  strncat(stressOutput, text, sizeof(stressOutput) - strlen(stressOutput) - 1);
+}
+
+// Runs the source in slot 1 in a VM that collects garbage on every
+// allocation, and returns what it printed. Any object the compiler or the VM
+// forgets to root is freed at the first allocation after it's created, so
+// the result shows it (wrong or missing output) instead of depending on where
+// the heap happens to cross its threshold.
+static void gcEveryAllocation(WrenVM* vm)
+{
+  WrenConfiguration config;
+  wrenInitConfiguration(&config);
+  config.writeFn = stressWrite;
+  config.initialHeapSize = 0;
+  config.minHeapSize = 0;
+  config.heapGrowthPercent = 0;
+
+  stressOutput[0] = '\0';
+  WrenVM* otherVM = wrenNewVM(&config);
+  WrenInterpretResult result =
+      wrenInterpret(otherVM, "main", wrenGetSlotString(vm, 1));
+  wrenFreeVM(otherVM);
+
+  if (result != WREN_RESULT_SUCCESS) strcpy(stressOutput, "error");
+  wrenSetSlotString(vm, 0, stressOutput);
+}
+
 WrenForeignMethodFn newVMBindMethod(const char* signature)
 {
   if (strcmp(signature, "static VM.nullConfig()") == 0) return nullConfig;
   if (strcmp(signature, "static VM.multipleInterpretCalls()") == 0) return multipleInterpretCalls;
+  if (strcmp(signature, "static VM.gcEveryAllocation(_)") == 0) return gcEveryAllocation;
 
   return NULL;
 }

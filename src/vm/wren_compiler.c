@@ -3549,7 +3549,13 @@ static bool matchAttribute(Compiler* compiler) {
     bool runtimeAccess = match(compiler, TOKEN_BANG);
     if(match(compiler, TOKEN_NAME)) 
     {
+      WrenVM* vm = compiler->parser->vm;
+
+      // Names read here are held while more tokens are lexed. Once a token
+      // leaves [previous] the compiler no longer marks its value, and lexing
+      // allocates, so root each name for as long as it's held.
       Value group = compiler->parser->previous.value;
+      wrenPushRoot(vm, AS_OBJ(group));
       TokenType ahead = peek(compiler);
       if(ahead == TOKEN_EQ || ahead == TOKEN_LINE)
       {
@@ -3574,12 +3580,16 @@ static bool matchAttribute(Compiler* compiler) {
           {
             consume(compiler, TOKEN_NAME, "Expect name for attribute key.");
             Value key = compiler->parser->previous.value;
+            // After a syntax error [key] may not be a name or an object.
+            bool keyRooted = IS_OBJ(key);
+            if(keyRooted) wrenPushRoot(vm, AS_OBJ(key));
             Value value = NULL_VAL;
             if(match(compiler, TOKEN_EQ))
             {
               value = consumeLiteral(compiler, "Expect a Bool, Num, String or Identifier literal for an attribute value.");
             }
             if(runtimeAccess) addToAttributeGroup(compiler, group, key, value);
+            if(keyRooted) wrenPopRoot(vm);
             ignoreNewlines(compiler);
             if(!match(compiler, TOKEN_COMMA)) break;
             ignoreNewlines(compiler);
@@ -3594,6 +3604,8 @@ static bool matchAttribute(Compiler* compiler) {
       {
         error(compiler, "Expect an equal, newline or grouping after an attribute key.");
       }
+
+      wrenPopRoot(vm);
     }
     else 
     {
@@ -3757,8 +3769,15 @@ static void classDefinition(Compiler* compiler, bool isForeign)
         ? wrenNewMap(compiler->parser->vm) 
         : NULL;
   classInfo.methodAttributes = NULL;
-  // Copy any existing attributes into the class
+  // Copy any existing attributes into the class. The class's map isn't
+  // reachable from the compiler until [enclosingClass] is set below, and
+  // copying can grow it, so keep it rooted meanwhile.
+  if (classInfo.classAttributes != NULL)
+  {
+    wrenPushRoot(compiler->parser->vm, (Obj*)classInfo.classAttributes);
+  }
   copyAttributes(compiler, classInfo.classAttributes);
+  if (classInfo.classAttributes != NULL) wrenPopRoot(compiler->parser->vm);
 
   // Set up a symbol table for the class's fields. We'll initially compile
   // them to slots starting at zero. When the method is bound to the class, the
@@ -4351,7 +4370,11 @@ static void addToAttributeGroup(Compiler* compiler,
   if(IS_UNDEFINED(groupMapValue)) 
   {
     groupMapValue = OBJ_VAL(wrenNewMap(vm));
+    // Setting it may grow the attributes map, which can collect garbage, and
+    // nothing else references the new group map yet.
+    wrenPushRoot(vm, AS_OBJ(groupMapValue));
     wrenMapSet(vm, compiler->attributes, group, groupMapValue);
+    wrenPopRoot(vm);
   }
 
   //we store them as a map per so we can maintain duplicate keys 
@@ -4364,7 +4387,9 @@ static void addToAttributeGroup(Compiler* compiler,
   if(IS_UNDEFINED(keyItemsValue)) 
   {
     keyItemsValue = OBJ_VAL(wrenNewList(vm, 0));
+    wrenPushRoot(vm, AS_OBJ(keyItemsValue));
     wrenMapSet(vm, groupMap, key, keyItemsValue);
+    wrenPopRoot(vm);
   }
 
   //keyItems.add(value)
@@ -4517,7 +4542,9 @@ static void copyMethodAttributes(Compiler* compiler, bool isForeign,
   
   // Store the method attributes in the class map
   Value key = wrenNewStringLength(vm, fullSignatureWithPrefix, fullLength);
+  wrenPushRoot(vm, AS_OBJ(key));
   wrenMapSet(vm, compiler->enclosingClass->methodAttributes, key, OBJ_VAL(methodAttr));
+  wrenPopRoot(vm);
 
   wrenPopRoot(vm);
 }
