@@ -56,6 +56,10 @@ void wrenInitConfiguration(WrenConfiguration* config)
   config->userData = NULL;
 }
 
+// The countdown with no interrupt hook installed. It still runs out, rarely,
+// and is simply refilled.
+#define INTERRUPT_OFF (1 << 30)
+
 WrenVM* wrenNewVM(WrenConfiguration* config)
 {
   WrenReallocateFn reallocate = defaultReallocate;
@@ -90,6 +94,9 @@ WrenVM* wrenNewVM(WrenConfiguration* config)
   vm->nextGC = vm->config.initialHeapSize;
 
   wrenSymbolTableInit(&vm->methodNames);
+
+  vm->interruptInterval = INTERRUPT_OFF;
+  vm->interruptCountdown = INTERRUPT_OFF;
 
   vm->modules = wrenNewMap(vm);
   wrenInitializeCore(vm);
@@ -847,6 +854,25 @@ static void callLineHook(WrenVM* vm, ObjFiber* fiber, ObjFn* fn, int line)
   vm->apiStack = apiStack;
 }
 
+// Refills the interrupt countdown and runs the interrupt hook, if any, with the
+// same API stack window as the line hook.
+static void callInterruptHook(WrenVM* vm, ObjFiber* fiber)
+{
+  vm->interruptCountdown = vm->interruptInterval;
+  if (vm->interruptHook == NULL) return;
+
+  Value* apiStack = vm->apiStack;
+  int stackTop = (int)(fiber->stackTop - fiber->stack);
+  vm->apiStack = fiber->stackTop;
+  vm->inLineHook = true;
+
+  vm->interruptHook(vm);
+
+  vm->inLineHook = false;
+  fiber->stackTop = fiber->stack + stackTop;
+  vm->apiStack = apiStack;
+}
+
 // Returned by an interpreter loop that hands execution to the other one.
 #define INTERPRETER_SWITCH -1
 
@@ -1495,6 +1521,14 @@ void wrenSetLineHook(WrenVM* vm, WrenLineHookFn hook)
 {
   vm->lineHook = hook;
   vm->hookFiber = NULL;
+}
+
+void wrenSetInterruptHook(WrenVM* vm, WrenInterruptFn hook, int interval)
+{
+  ASSERT(interval > 0, "Interval must be positive.");
+  vm->interruptHook = hook;
+  vm->interruptInterval = hook == NULL ? INTERRUPT_OFF : interval;
+  vm->interruptCountdown = vm->interruptInterval;
 }
 
 // Finds call frame [index] of the running fiber and the fibers that called it,

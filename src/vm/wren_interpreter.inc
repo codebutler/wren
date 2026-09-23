@@ -4,7 +4,8 @@
 // This file is included twice by wren_vm.c. With WREN_INTERPRETER_HOOKED 0 it
 // is the plain interpreter, which does no debugger work at all. With 1 it
 // calls the line hook before each new line. Each loop hands over to the other
-// by returning INTERPRETER_SWITCH when a hook is installed or removed.
+// by returning INTERPRETER_SWITCH when a hook is installed or removed. Both
+// count loop iterations and calls for the interrupt hook.
 static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
 {
   // Hoist these into local variables. They are accessed frequently in the loop
@@ -75,6 +76,22 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
 
   // True when the installed hook no longer matches this loop.
   #define HOOK_CHANGED() ((vm->lineHook != NULL) != WREN_INTERPRETER_HOOKED)
+
+  // A safepoint, at each loop iteration and call: every interruptInterval of
+  // them, the interrupt hook runs. It may abort the fiber or install the line
+  // hook, and may have moved the stack.
+  #define INTERRUPT_CHECK()                                                    \
+      do                                                                       \
+      {                                                                        \
+        if (--vm->interruptCountdown <= 0)                                     \
+        {                                                                      \
+          STORE_FRAME();                                                       \
+          callInterruptHook(vm, fiber);                                        \
+          if (wrenHasError(fiber)) RUNTIME_ERROR();                            \
+          if (HOOK_CHANGED()) SWITCH_LOOP();                                   \
+          LOAD_FRAME();                                                        \
+        }                                                                      \
+      } while (false)
 
   #if WREN_COMPUTED_GOTO
 
@@ -283,6 +300,7 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
           STORE_FRAME();
           method->as.primitive(vm, args);
           LOAD_FRAME();
+          INTERRUPT_CHECK();
           break;
 
         case METHOD_FOREIGN:
@@ -299,6 +317,7 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
           STORE_FRAME();
           wrenCallFunction(vm, fiber, (ObjClosure*)method->as.closure, numArgs);
           LOAD_FRAME();
+          INTERRUPT_CHECK();
           break;
 
         case METHOD_NONE:
@@ -380,6 +399,7 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
         // Each iteration reports its first line, even if it is this one.
         vm->hookLine = -1;
       #endif
+      INTERRUPT_CHECK();
       DISPATCH();
     }
 
@@ -650,6 +670,7 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
   #undef DEBUG_TRACE_INSTRUCTIONS
   #undef SWITCH_LOOP
   #undef HOOK_CHANGED
+  #undef INTERRUPT_CHECK
   #undef INTERPRET_LOOP
   #undef CASE_CODE
   #undef DISPATCH

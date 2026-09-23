@@ -84,4 +84,37 @@ var result = Fiber.new {
 System.print(result) // expect: Stopped by the line hook.
 System.print(reached) // expect: before
 
-System.print(Debug.moduleVariables("Debug")) // expect: Debug=<Debug metaclass> Counter=<Counter metaclass> sum=<Fn> counter=<Counter> n=3 greet=<Fn> Fib=<Fib metaclass> reached="before" result="Stopped by the line hook."
+System.print(Debug.moduleVariables("Debug")) // expect: Debug=<Debug metaclass> Counter=<Counter metaclass> sum=<Fn> counter=<Counter> n=3 greet=<Fn> Fib=<Fib metaclass> reached="before" result="Stopped by the line hook." Interrupt=null spin=null Deep=null dive=null k=null
+
+class Interrupt {
+  foreign static every(interval, abortAt, watchAt)
+  foreign static count()
+}
+
+// The interrupt hook runs every so many loop iterations and calls.
+Interrupt.every(2, 0, 0)
+for (i in 1..10) {}
+System.print(Interrupt.count()) // expect: 5
+
+// It can end a loop that never calls anything, and a recursion that never
+// loops. The VM carries on.
+var spin = Fiber.new {
+  Interrupt.every(1000, 5, 0)
+  while (true) {}
+}
+System.print(spin.try()) // expect: Interrupted.
+class Deep {
+  static down(n) { down(n + 1) }
+}
+var dive = Fiber.new {
+  Interrupt.every(1, 50, 0)
+  Deep.down(0)
+}
+System.print(dive.try()) // expect: Interrupted.
+
+// It can install the line hook mid-loop; the loop carries on hooked.
+Interrupt.every(1, 0, 3)
+var k = 0
+while (k < 5) k = k + 1
+System.print(Debug.stop()) // expect: 118@1 118@1 118@1 119@1
+Interrupt.count()

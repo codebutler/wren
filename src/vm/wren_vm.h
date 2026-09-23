@@ -122,8 +122,15 @@ struct WrenVM
   int hookDepth;
   int hookLine;
 
-  // True while the line hook runs. The innermost frame's ip then points at
-  // the instruction about to execute rather than past the last one.
+  // The interrupt hook, or NULL (wrenSetInterruptHook). [interruptCountdown]
+  // counts loop iterations and calls down to the next call of it.
+  WrenInterruptFn interruptHook;
+  int interruptInterval;
+  int interruptCountdown;
+
+  // True while the line hook or the interrupt hook runs. The innermost frame's
+  // ip then points at the instruction about to execute rather than past the
+  // last one.
   bool inLineHook;
 };
 

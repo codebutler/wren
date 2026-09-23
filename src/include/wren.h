@@ -571,6 +571,25 @@ typedef void (*WrenLineHookFn)(WrenVM* vm, const char* module, int line);
 // installed the interpreter only tests for one after each instruction.
 WREN_API void wrenSetLineHook(WrenVM* vm, WrenLineHookFn hook);
 
+// A function the VM calls every so many loop iterations and function calls:
+// see [wrenSetInterruptHook]. A program cannot run for long without reaching
+// one, so an embedder can interrupt a runaway script from here.
+//
+// The hook has the same rules as a [WrenLineHookFn]: the stack inspection
+// functions work, the slot API may be used after [wrenEnsureSlots], and it may
+// call [wrenAbortFiber] to raise a runtime error in the running fiber. It may
+// also install or remove the line hook, which takes effect at once. It must not
+// call [wrenCall] or [wrenInterpret].
+typedef void (*WrenInterruptFn)(WrenVM* vm);
+
+// Calls [hook] after every [interval] loop iterations and function calls
+// (counted together), in either interpreter loop, or disables it when [hook]
+// is NULL. The count is kept even with no hook installed, so the interpreter
+// pays for one decrement per iteration or call either way. [interval] must be
+// positive.
+WREN_API void wrenSetInterruptHook(WrenVM* vm, WrenInterruptFn hook,
+                                   int interval);
+
 // One call frame of the running fiber.
 typedef struct
 {
