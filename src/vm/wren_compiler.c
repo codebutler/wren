@@ -818,15 +818,18 @@ static void skipBlockComment(Parser* parser)
 // returns its numeric value. If the character isn't a hex digit, returns -1.
 static int readHexDigit(Parser* parser)
 {
-  char c = nextChar(parser);
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  // Look before consuming. A character that isn't a digit must be left
+  // alone: that keeps us from reading past the end of an unterminated string,
+  // and a newline right after a hex literal (`x = 0xff\n`) must not be
+  // counted as a line here and again when it is lexed for real.
+  char c = peekChar(parser);
+  int value = -1;
+  if (c >= '0' && c <= '9') value = c - '0';
+  else if (c >= 'a' && c <= 'f') value = c - 'a' + 10;
+  else if (c >= 'A' && c <= 'F') value = c - 'A' + 10;
 
-  // Don't consume it if it isn't expected. Keeps us from reading past the end
-  // of an unterminated string.
-  parser->currentChar--;
-  return -1;
+  if (value != -1) nextChar(parser);
+  return value;
 }
 
 // Parses the numeric value of the current token.
