@@ -665,21 +665,50 @@ DEF_NUM_INFIX(gt,       >,  BOOL)
 DEF_NUM_INFIX(lte,      <=, BOOL)
 DEF_NUM_INFIX(gte,      >=, BOOL)
 
+// Converts [value] to the 32-bit unsigned integer the bitwise operators work
+// on: the fraction is truncated and the result wrapped modulo 2^32, so -1 is
+// 0xffffffff and 2^32 + 5 is 5. NaN and the infinities are 0. (This is
+// JavaScript's ToUint32.)
+//
+// A plain C cast is undefined for negative and out-of-range values, and real
+// targets disagree: x86-64 wraps, but ARM64 and WebAssembly saturate, so
+// `-1 & 255` was 255 on one machine and 0 on another.
+static uint32_t numToUint32(double value)
+{
+  if (isnan(value) || isinf(value)) return 0;
+
+  double wrapped = fmod(trunc(value), 4294967296.0);
+  if (wrapped < 0) wrapped += 4294967296.0;
+  return (uint32_t)wrapped;
+}
+
 // Defines a primitive on Num that call infix bitwise [op].
 #define DEF_NUM_BITWISE(name, op)                                              \
     DEF_PRIMITIVE(num_bitwise##name)                                           \
     {                                                                          \
       if (!validateNum(vm, args[1], "Right operand")) return false;            \
-      uint32_t left = (uint32_t)AS_NUM(args[0]);                               \
-      uint32_t right = (uint32_t)AS_NUM(args[1]);                              \
+      uint32_t left = numToUint32(AS_NUM(args[0]));                            \
+      uint32_t right = numToUint32(AS_NUM(args[1]));                           \
+      RETURN_NUM(left op right);                                               \
+    }
+
+// Defines a primitive on Num that shifts by the right operand. Only the low
+// five bits of the count are used (as on the hardware, and in JavaScript), so
+// shifting by 32 is shifting by 0. C leaves counts of 32 or more undefined.
+#define DEF_NUM_SHIFT(name, op)                                                \
+    DEF_PRIMITIVE(num_bitwise##name)                                           \
+    {                                                                          \
+      if (!validateNum(vm, args[1], "Right operand")) return false;            \
+      uint32_t left = numToUint32(AS_NUM(args[0]));                            \
+      uint32_t right = numToUint32(AS_NUM(args[1])) & 31;                      \
       RETURN_NUM(left op right);                                               \
     }
 
 DEF_NUM_BITWISE(And,        &)
 DEF_NUM_BITWISE(Or,         |)
 DEF_NUM_BITWISE(Xor,        ^)
-DEF_NUM_BITWISE(LeftShift,  <<)
-DEF_NUM_BITWISE(RightShift, >>)
+DEF_NUM_SHIFT(LeftShift,  <<)
+DEF_NUM_SHIFT(RightShift, >>)
 
 // Defines a primitive method on Num that returns the result of [fn].
 #define DEF_NUM_FN(name, fn)                                                   \
@@ -726,7 +755,7 @@ DEF_PRIMITIVE(num_bangeq)
 DEF_PRIMITIVE(num_bitwiseNot)
 {
   // Bitwise operators always work on 32-bit unsigned ints.
-  RETURN_NUM(~(uint32_t)AS_NUM(args[0]));
+  RETURN_NUM(~numToUint32(AS_NUM(args[0])));
 }
 
 DEF_PRIMITIVE(num_dotDot)

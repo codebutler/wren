@@ -237,8 +237,19 @@ are ordered. It is a runtime error if `other` is not a number.
 ### **~** operator
 
 Performs *bitwise* negation on the number. The number is first converted to a
-32-bit unsigned value, which will truncate any floating point value. The bits
-of the result of that are then negated, yielding the result.
+32-bit unsigned value (see below). The bits of the result of that are then
+negated, yielding the result.
+
+All of the bitwise operators convert their operands the same way: any
+fractional part is truncated, and the result is wrapped modulo 2<sup>32</sup>,
+so a negative number becomes its two's complement (`-1` is `0xffffffff`) and
+`0x100000005` becomes `5`. `nan` and the infinities become `0`. This is the
+same conversion JavaScript's bitwise operators use.
+
+<pre class="snippet">
+System.print(-1 & 255)  //> 255
+System.print(~(-1))     //> 0
+</pre>
 
 ### **&**(other) operator
 
@@ -264,13 +275,18 @@ It is a runtime error if `other` is not a number.
 
 ### **&lt;&lt;**(other) operator
 
-Performs a bitwise left shift on the number. Internally, both numbers are first converted to 32-bit unsigned values and C's left shift operator is then applied to them.
+Performs a bitwise left shift on the number. Both numbers are first converted
+to 32-bit unsigned values, and bits shifted past bit 31 are lost. Only the low
+five bits of the shift count are used, so shifting by `32` is the same as
+shifting by `0`, and by `33` the same as by `1`.
 
 It is a runtime error if `other` is not a number.
 
 ### **&gt;&gt;**(other) operator
 
-Performs a bitwise right shift on the number. Internally, both numbers are first converted to 32-bit unsigned values and C's right shift operator is then applied to them.
+Performs a bitwise right shift on the number. Both numbers are first converted
+to 32-bit unsigned values; the shift is logical, so zeros are shifted in at the
+top. As with `<<`, only the low five bits of the shift count are used.
 
 It is a runtime error if `other` is not a number.
 
