@@ -1827,6 +1827,70 @@ static bool isStopped(WrenVM* vm)
   return vm->inLineHook || vm->inErrorHook;
 }
 
+// The offset of the first statement of [fn] that starts on [line], or -1.
+static int firstStatementOn(ObjFn* fn, int line)
+{
+  IntBuffer* statements = &fn->debug->statements;
+  for (int i = 0; i < statements->count; i++)
+  {
+    int at = statements->data[i];
+    if (at < fn->debug->sourceLines.count && fn->debug->sourceLines.data[at] == line)
+    {
+      return at;
+    }
+  }
+  return -1;
+}
+
+// Whether [fn] is a method: its slot 0 is the recorded `this`.
+static bool isMethodFn(ObjFn* fn)
+{
+  FnVariableBuffer* variables = &fn->debug->variables;
+  return variables->count > 0 && variables->data[0].index == 0 &&
+         variables->data[0].start == 0 &&
+         strcmp(variables->data[0].name, "this") == 0;
+}
+
+// The body [frame]'s method has now, when wrenReplaceMethods replaced it
+// after the frame started running the old one; otherwise NULL.
+static ObjClosure* replacedBody(WrenVM* vm, CallFrame* frame)
+{
+  ObjFn* fn = frame->closure->fn;
+  if (!isMethodFn(fn) || fn->debug->name == NULL) return NULL;
+  int symbol = wrenSymbolTableFind(&vm->methodNames, fn->debug->name,
+                                   strlen(fn->debug->name));
+  if (symbol < 0) return NULL;
+  ObjClass* classObj = wrenGetClassInline(vm, frame->stackStart[0]);
+  if (symbol >= classObj->methods.count) return NULL;
+  Method* method = &classObj->methods.data[symbol];
+  if (method->type != METHOD_BLOCK || method->as.closure == frame->closure)
+  {
+    return NULL;
+  }
+  return method->as.closure;
+}
+
+// Whether local [variable] of the body a frame moves to is live at [offset]
+// of the frame's current function [fn]: the same record when the body stays,
+// a local of the same name in the same slot when it changes.
+static bool isLocalLive(ObjFn* fn, int offset, FnVariable* variable,
+                        bool sameBody)
+{
+  if (sameBody)
+  {
+    return offset >= variable->start && offset < variable->end;
+  }
+  FnVariableBuffer* variables = &fn->debug->variables;
+  for (int i = 0; i < variables->count; i++)
+  {
+    FnVariable* old = &variables->data[i];
+    if (old->start == -1 || old->index != variable->index) continue;
+    if (offset < old->start || offset >= old->end) continue;
+    if (strcmp(old->name, variable->name) == 0) return true;
+  }
+  return false;
+}
+
 WrenSetLineResult wrenSetFrameLine(WrenVM* vm, int line)
 {
   if (!isStopped(vm) || vm->fiber == NULL) return WREN_SET_LINE_NOT_STOPPED;
@@ -1842,17 +1906,18 @@ WrenSetLineResult wrenSetFrameLine(WrenVM* vm, int line)
     return WREN_SET_LINE_NOT_STOPPED;
   }
 
-  ObjFn* fn = frame->closure->fn;
-  IntBuffer* statements = &fn->debug->statements;
-  int target = -1;
-  for (int i = 0; i < statements->count; i++)
+  // The line is in the body the frame runs, or in the body its method has
+  // now, if wrenReplaceMethods replaced it since the frame started: then the
+  // frame moves onto the new body ("edit the line and run it again").
+  ObjClosure* body = frame->closure;
+  int target = firstStatementOn(body->fn, line);
+  if (target == -1)
   {
-    int at = statements->data[i];
-    if (at < fn->debug->sourceLines.count &&
-        fn->debug->sourceLines.data[at] == line)
+    ObjClosure* replacement = replacedBody(vm, frame);
+    if (replacement != NULL)
     {
-      target = at;
-      break;
+      target = firstStatementOn(replacement->fn, line);
+      if (target != -1) body = replacement;
     }
   }
   if (target == -1) return WREN_SET_LINE_NO_STATEMENT;
@@ -1861,25 +1926,34 @@ WrenSetLineResult wrenSetFrameLine(WrenVM* vm, int line)
   // there must be in scope here too (jumping out of a block is fine, into
   // one is not): then its slot already holds its value, and the stack is
   // cut back to the target's locals.
+  bool sameBody = body == frame->closure;
   int height = 1;
-  FnVariableBuffer* variables = &fn->debug->variables;
+  FnVariableBuffer* variables = &body->fn->debug->variables;
   for (int i = 0; i < variables->count; i++)
   {
     FnVariable* variable = &variables->data[i];
     if (variable->start == -1) continue;
     if (target < variable->start || target >= variable->end) continue;
-    if (offset < variable->start || offset >= variable->end)
+    if (!isLocalLive(frame->closure->fn, offset, variable, sameBody))
     {
       return WREN_SET_LINE_OUT_OF_SCOPE;
     }
     if (variable->index + 1 > height) height = variable->index + 1;
   }
 
+  // A new body may need more stack than the old one reserved.
+  if (!sameBody)
+  {
+    int base = (int)(frame->stackStart - fiber->stack);
+    wrenEnsureStack(vm, fiber, base + body->fn->maxSlots);
+  }
+
   Value* top = frame->stackStart + height;
   if (top > fiber->stackTop) return WREN_SET_LINE_OUT_OF_SCOPE;
   closeUpvalues(fiber, top);
   vm->hookStackTop = (int)(top - fiber->stack);
-  frame->ip = fn->code.data + target;
+  frame->closure = body;
+  frame->ip = body->fn->code.data + target;
 
   // The line starts now: the line hook must not report it again.
   vm->hookFiber = fiber;
@@ -2021,9 +2095,7 @@ WrenInterpretResult wrenEvaluateInFrame(WrenVM* vm, int frame,
   scope.fn = fn;
   scope.offset = offset;
   FnVariableBuffer* variables = &fn->debug->variables;
-  scope.isMethod = variables->count > 0 && variables->data[0].index == 0 &&
-                   variables->data[0].start == 0 &&
-                   strcmp(variables->data[0].name, "this") == 0;
+  scope.isMethod = isMethodFn(fn);
   Value receiver = callFrame->stackStart[0];
   scope.isStatic = scope.isMethod && IS_CLASS(receiver);
   scope.fieldsClass = NULL;

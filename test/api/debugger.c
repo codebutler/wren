@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "debugger.h"
@@ -10,6 +11,10 @@
 //   "exec"      runs statements [arg] in the innermost frame
 //   "set"       moves the innermost frame to line [arg] (a number)
 //   "interpret" runs [arg] as new top-level code with wrenInterpretInHook
+//   "swapset"   [arg] is "<line>|<source>": interprets <source> (after 300
+//               blank lines, so its lines are its own) with
+//               wrenInterpretInHook, replaces Greeter's methods with
+//               Greeter2's, then moves the innermost frame to <line>
 //
 // Stop.onError(line) installs an error hook that records each error it sees
 // and, when [line] is not 0, moves the failing frame there. Stop.result
@@ -17,7 +22,7 @@
 static char log[2048];
 static int stopLine;
 static char action[16];
-static char arg[256];
+static char arg[1024];
 static int argLine;
 static int errorLine;
 
@@ -77,6 +82,28 @@ static void act(WrenVM* vm)
   else if (strcmp(action, "set") == 0)
   {
     append(setLineName(wrenSetFrameLine(vm, argLine)));
+  }
+  else if (strcmp(action, "swapset") == 0)
+  {
+    static char source[2048];
+    const char* bar = strchr(arg, '|');
+    int line = atoi(arg);
+    memset(source, '\n', 300);
+    snprintf(source + 300, sizeof(source) - 300, "%s", bar ? bar + 1 : "");
+    if (wrenInterpretInHook(vm, "./test/api/debugger", source) != WREN_RESULT_SUCCESS)
+    {
+      append("swap did not compile");
+      return;
+    }
+    const char* detail = NULL;
+    WrenReplaceResult replaced = wrenReplaceMethods(vm, "./test/api/debugger",
+                                                    "Greeter", "Greeter2", &detail);
+    if (replaced != WREN_REPLACE_SUCCESS)
+    {
+      append("not replaced");
+      return;
+    }
+    append(setLineName(wrenSetFrameLine(vm, line)));
   }
   else if (strcmp(action, "interpret") == 0)
   {
