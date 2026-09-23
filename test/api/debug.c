@@ -112,6 +112,45 @@ static void abortAt(WrenVM* vm)
   wrenSetLineHook(vm, abortingHook);
 }
 
+// The interrupt hook counts its calls. It aborts the fiber on call
+// [interruptAbortAt], and installs the recording line hook on call
+// [interruptWatchAt] (0 = never).
+static int interrupts;
+static int interruptAbortAt;
+static int interruptWatchAt;
+
+static void interruptHook(WrenVM* vm)
+{
+  interrupts++;
+  if (interrupts == interruptWatchAt)
+  {
+    log[0] = '\0';
+    watchLine = 0;
+    wrenSetLineHook(vm, lineHook);
+  }
+  if (interrupts == interruptAbortAt)
+  {
+    wrenSetInterruptHook(vm, NULL, 1);
+    wrenEnsureSlots(vm, 1);
+    wrenSetSlotString(vm, 0, "Interrupted.");
+    wrenAbortFiber(vm, 0);
+  }
+}
+
+static void interruptEvery(WrenVM* vm)
+{
+  interrupts = 0;
+  interruptAbortAt = (int)wrenGetSlotDouble(vm, 2);
+  interruptWatchAt = (int)wrenGetSlotDouble(vm, 3);
+  wrenSetInterruptHook(vm, interruptHook, (int)wrenGetSlotDouble(vm, 1));
+}
+
+static void interruptCount(WrenVM* vm)
+{
+  wrenSetInterruptHook(vm, NULL, 1);
+  wrenSetSlotDouble(vm, 0, interrupts);
+}
+
 // Describes the stack from inside a foreign method.
 static void stack(WrenVM* vm)
 {
@@ -151,6 +190,8 @@ WrenForeignMethodFn debugBindMethod(const char* signature)
   if (strcmp(signature, "static Debug.stop()") == 0) return stop;
   if (strcmp(signature, "static Debug.abortAt(_)") == 0) return abortAt;
   if (strcmp(signature, "static Debug.stack()") == 0) return stack;
+  if (strcmp(signature, "static Interrupt.every(_,_,_)") == 0) return interruptEvery;
+  if (strcmp(signature, "static Interrupt.count()") == 0) return interruptCount;
   if (strcmp(signature, "static Debug.moduleVariables(_)") == 0) return moduleVariables;
 
   return NULL;
