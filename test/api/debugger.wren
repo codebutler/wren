@@ -121,6 +121,30 @@ Stop.at(110, "set", 114)
 into.call()
 System.print(Stop.result) // expect: no-statement
 
+// Static fields: the ones the frame's method uses, read and assigned; one
+// it does not use is an error, and nothing is left behind in the module.
+class Tally {
+  static bump() {
+    __count = (__count == null ? 0 : __count) + 1
+    return __count
+  }
+  static other() {
+    return 0
+  }
+}
+Stop.at(129, "eval", "__count * 10")
+Tally.bump()
+System.print(Stop.result) // expect: 10
+Stop.at(129, "exec", "__count = 41")
+System.print(Tally.bump()) // expect: 41
+System.print(Stop.result) // expect: null
+Stop.at(132, "eval", "__count")
+Tally.other()
+System.print(Stop.result) // expect: compile error: Error at '__count': Static field '__count' is not used by this method.
+Stop.at(132, "eval", "__count")
+Tally.other()
+System.print(Stop.result) // expect: compile error: Error at '__count': Static field '__count' is not used by this method.
+
 // Nested top-level code from inside the hook.
 Stop.at(20, "interpret", "System.print(\"nested\")")
 p.sum(0) // expect: nested
@@ -133,9 +157,9 @@ var risky = Fn.new {
   a = a.nope
   return "resumed " + a.toString
 }
-Stop.onError(134)
+Stop.onError(158)
 System.print(risky.call()) // expect: resumed 1
-System.print(Stop.result) // expect: [Num does not implement 'nope'. at new(_) block argument:133] a=1 moved
+System.print(Stop.result) // expect: [Num does not implement 'nope'. at new(_) block argument:157] a=1 moved
 
 // A caught error does not call the hook.
 Stop.onError(0)

@@ -2506,6 +2506,22 @@ static void staticField(Compiler* compiler, bool canAssign)
   // Look up the name in the scope chain.
   Token* token = &compiler->parser->previous;
 
+  // In a stopped frame's scope (wrenCompileInFrame) the class body is gone:
+  // a static field is there only if the frame's function captured it.
+  if (classCompiler->enclosingClass != NULL &&
+      classCompiler->enclosingClass->fieldsFixed)
+  {
+    Variable variable = resolveNonmodule(compiler, token->start, token->length);
+    if (variable.index == -1)
+    {
+      error(compiler, "Static field '%.*s' is not used by this method.",
+            token->length, token->start);
+      return;
+    }
+    bareName(compiler, canAssign, variable);
+    return;
+  }
+
   // If this is the first time we've seen this static field, implicitly
   // define it as a variable in the scope surrounding the class definition.
   if (resolveLocal(classCompiler, token->start, token->length) == -1)
