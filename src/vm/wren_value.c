@@ -657,6 +657,7 @@ ObjModule* wrenNewModule(WrenVM* vm, ObjString* name)
 
   wrenSymbolTableInit(&module->variableNames);
   wrenValueBufferInit(&module->variables);
+  wrenValueBufferInit(&module->imports);
 
   module->name = name;
 
@@ -1170,6 +1171,11 @@ static void blackenModule(WrenVM* vm, ObjModule* module)
 
   wrenBlackenSymbolTable(vm, &module->variableNames);
 
+  for (int i = 0; i < module->imports.count; i++)
+  {
+    wrenGrayValue(vm, module->imports.data[i]);
+  }
+
   wrenGrayObj(vm, (Obj*)module->name);
 
   // Keep track of how much memory is still in use.
@@ -1287,6 +1293,7 @@ void wrenFreeObj(WrenVM* vm, Obj* obj)
     case OBJ_MODULE:
       wrenSymbolTableClear(vm, &((ObjModule*)obj)->variableNames);
       wrenValueBufferClear(vm, &((ObjModule*)obj)->variables);
+      wrenValueBufferClear(vm, &((ObjModule*)obj)->imports);
       break;
 
     case OBJ_CLOSURE:

@@ -265,6 +265,12 @@ typedef struct
 
   // The name of the module.
   ObjString* name;
+
+  // Where each module variable an `import` bound came from, indexed like
+  // [variables]: the string "<module> <variable>", or null for a variable
+  // that no import bound. It lets the same import be repeated (see import()
+  // in wren_compiler.c). May be shorter than [variables].
+  ValueBuffer imports;
 } ObjModule;
 
 // A function object. It wraps and owns the bytecode and other debug information
