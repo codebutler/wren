@@ -3875,11 +3875,38 @@ static void classDefinition(Compiler* compiler, bool isForeign)
 // * Emit an IMPORT_VARIABLE instruction to load the variable's value from the
 //   other module.
 // * Compile the code to store that value in the variable in this scope.
+// The module variable [name] if an import of the same variable from the same
+// module already bound it, or -1. Such a name may be imported again: the
+// import just stores the variable once more, so a script that is compiled in
+// pieces into one module (a REPL, an embedder that concatenates files) can
+// repeat its imports.
+static int priorImport(Compiler* compiler, Token* name, ObjString* from)
+{
+  if (compiler->scopeDepth != -1) return -1;
+  ObjModule* module = compiler->parser->module;
+  int symbol = wrenSymbolTableFind(&module->variableNames, name->start, name->length);
+  if (symbol < 0 || symbol >= module->imports.count) return -1;
+  Value prior = module->imports.data[symbol];
+  if (!IS_STRING(prior)) return -1;
+  return wrenStringEqualsCString(AS_STRING(prior), from->value, from->length) ? symbol : -1;
+}
+
+// Records that [symbol] was bound by importing [from] ("<module> <variable>").
+static void recordImport(Compiler* compiler, int symbol, ObjString* from)
+{
+  if (compiler->scopeDepth != -1 || symbol < 0) return;
+  WrenVM* vm = compiler->parser->vm;
+  ObjModule* module = compiler->parser->module;
+  while (module->imports.count <= symbol) wrenValueBufferWrite(vm, &module->imports, NULL_VAL);
+  module->imports.data[symbol] = OBJ_VAL(from);
+}
+
 static void import(Compiler* compiler)
 {
   ignoreNewlines(compiler);
   consume(compiler, TOKEN_STRING, "Expect a string after 'import'.");
-  int moduleConstant = addConstant(compiler, compiler->parser->previous.value);
+  Value moduleName = compiler->parser->previous.value;
+  int moduleConstant = addConstant(compiler, moduleName);
 
   // Load the module.
   emitShortArg(compiler, CODE_IMPORT_MODULE, moduleConstant);
@@ -3907,21 +3934,35 @@ static void import(Compiler* compiler)
                         sourceVariableToken.start,
                         sourceVariableToken.length));
 
+    // Where the variable comes from, to let the same import repeat.
+    WrenVM* vm = compiler->parser->vm;
+    Value sourceName = wrenNewStringLength(vm, sourceVariableToken.start,
+                                           sourceVariableToken.length);
+    wrenPushRoot(vm, AS_OBJ(sourceName));
+    ObjString* from = AS_STRING(wrenStringFormat(vm, "@ @", moduleName, sourceName));
+    wrenPopRoot(vm);
+    wrenPushRoot(vm, (Obj*)from);
+
     // Store the symbol we care about for the variable
     int slot = -1;
+    Token nameToken = sourceVariableToken;
     if(match(compiler, TOKEN_AS))
     {
       //import "module" for Source as Dest
       //Use 'Dest' as the name by declaring a new variable for it.
       //This parses a name after the 'as' and defines it.
-      slot = declareNamedVariable(compiler);
+      consume(compiler, TOKEN_NAME, "Expect variable name.");
+      nameToken = compiler->parser->previous;
     }
-    else
+
+    //import "module" for Source (as Dest), again: store it once more.
+    slot = priorImport(compiler, &nameToken, from);
+    if (slot == -1)
     {
-      //import "module" for Source
-      //Uses 'Source' as the name directly
-      slot = declareVariable(compiler, &sourceVariableToken);
+      slot = declareVariable(compiler, &nameToken);
+      recordImport(compiler, slot, from);
     }
+    wrenPopRoot(vm);
 
     // Load the variable from the other module.
     emitShortArg(compiler, CODE_IMPORT_VARIABLE, sourceVariableConstant);
