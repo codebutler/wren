@@ -1963,6 +1963,166 @@ static void finishBody(Compiler* compiler)
   emitOp(compiler, CODE_RETURN);
 }
 
+// Type annotations ------------------------------------------------------------
+//
+// An annotation says what a declared name holds. It is for tools (an editor,
+// a checker): the compiler parses it and throws it away. Nothing about it
+// reaches the function it compiles, not a byte, a constant or a debug entry, so
+// a program with annotations compiles to exactly what it compiles to with them
+// deleted.
+//
+//     annotation = "as" type
+//     type       = primary { "or" primary }
+//     primary    = NAME [ arguments ]
+//                | "Fn" "(" [ type { "," type } ] ")" [ "as" type ]
+//                | STRING
+//                | "(" type ")"
+//     arguments  = "(" "of" type { "," type } ")"
+//     parameters = "(" "of" parameter { "," parameter } ")"
+//     parameter  = NAME [ "as" type ]
+//
+// Annotations follow a declared name: a parameter, a variable, a loop
+// variable, a method's signature (its return), a field declaration in a class
+// body, and a record's fields. Type parameters follow a class's, a record's or
+// a method's name. `as` is a keyword; `of`, `or` and `Fn` are ordinary names
+// that are words only here, so a program may still name a variable `of`.
+//
+// A type is written on one line.
+
+// How deeply one type may nest before the compiler gives up on it, so a
+// malformed annotation cannot exhaust the C stack.
+#define MAX_TYPE_DEPTH 64
+
+// Whether [token] is the name [word].
+static bool isWord(Token* token, const char* word)
+{
+  size_t length = strlen(word);
+  return token->type == TOKEN_NAME && (size_t)token->length == length &&
+         memcmp(token->start, word, length) == 0;
+}
+
+// Consumes the name [word]. If the current token is not it, reports an error
+// at the token before and leaves the current one, so parsing carries on as if
+// the word were there: `List(Num)` is one error, not a cascade.
+static void consumeWord(Compiler* compiler, const char* word,
+                        const char* errorMessage)
+{
+  if (isWord(&compiler->parser->current, word))
+  {
+    nextToken(compiler->parser);
+    return;
+  }
+
+  error(compiler, errorMessage);
+}
+
+static void parseType(Compiler* compiler, int depth);
+
+// Parses a comma-separated list of types up to [close], which it consumes.
+static void typeList(Compiler* compiler, int depth, const char* errorMessage)
+{
+  do
+  {
+    parseType(compiler, depth);
+  }
+  while (match(compiler, TOKEN_COMMA));
+
+  consume(compiler, TOKEN_RIGHT_PAREN, errorMessage);
+}
+
+// Parses one alternative of a type: a name with optional type arguments, a
+// function type, a string literal, or a parenthesized type.
+static void typePrimary(Compiler* compiler, int depth)
+{
+  if (depth > MAX_TYPE_DEPTH)
+  {
+    error(compiler, "Type annotation is nested too deeply.");
+    return;
+  }
+
+  if (match(compiler, TOKEN_LEFT_PAREN))
+  {
+    parseType(compiler, depth + 1);
+    consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after type.");
+    return;
+  }
+
+  // A literal type: one exact string, as in `"left" or "right"`.
+  if (match(compiler, TOKEN_STRING)) return;
+
+  if (!match(compiler, TOKEN_NAME))
+  {
+    // Report the gap at the word before it (`as`, `or`, `of` or `,`) and leave
+    // what follows to be parsed as it would be without the annotation.
+    error(compiler, "Expect a type.");
+    return;
+  }
+
+  if (peek(compiler) != TOKEN_LEFT_PAREN) return;
+
+  // A function type lists its parameters' types and may give its result:
+  // `Fn(Item) as Bool`. A bare `Fn` is the class.
+  if (isWord(&compiler->parser->previous, "Fn"))
+  {
+    nextToken(compiler->parser);
+    if (!match(compiler, TOKEN_RIGHT_PAREN))
+    {
+      typeList(compiler, depth + 1, "Expect ')' after function parameter types.");
+    }
+
+    if (match(compiler, TOKEN_AS)) parseType(compiler, depth + 1);
+    return;
+  }
+
+  // Type arguments: `List(of Item)`, `Map(of String, Contact)`.
+  nextToken(compiler->parser);
+  consumeWord(compiler, "of", "Expect 'of' after '(' in type arguments.");
+  typeList(compiler, depth + 1, "Expect ')' after type arguments.");
+}
+
+// Parses a type: one or more alternatives joined by `or`.
+static void parseType(Compiler* compiler, int depth)
+{
+  typePrimary(compiler, depth);
+
+  while (isWord(&compiler->parser->current, "or"))
+  {
+    nextToken(compiler->parser);
+    typePrimary(compiler, depth);
+  }
+}
+
+// Parses an optional annotation after a declared name: `as` and a type.
+// Emits nothing.
+static void typeAnnotation(Compiler* compiler)
+{
+  if (match(compiler, TOKEN_AS)) parseType(compiler, 0);
+}
+
+// Parses a declaration's type parameters after its "(" and "of": each a name
+// with an optional bound, `(of K, V as Widget)`. Emits nothing and declares
+// nothing.
+static void finishTypeParameters(Compiler* compiler)
+{
+  do
+  {
+    consume(compiler, TOKEN_NAME, "Expect type parameter name.");
+    typeAnnotation(compiler);
+  }
+  while (match(compiler, TOKEN_COMMA));
+
+  consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after type parameters.");
+}
+
+// Parses a declaration's type parameters, `(of T)`, if they come next.
+static void maybeTypeParameters(Compiler* compiler, const char* errorMessage)
+{
+  if (!match(compiler, TOKEN_LEFT_PAREN)) return;
+
+  consumeWord(compiler, "of", errorMessage);
+  finishTypeParameters(compiler);
+}
+
 // The VM can only handle a certain number of parameters, so check that we
 // haven't exceeded that and give a usable error.
 static void validateNumParameters(Compiler* compiler, int numArgs)
@@ -1987,6 +2147,7 @@ static void finishParameterList(Compiler* compiler, Signature* signature)
 
     // Define a local variable in the method for the parameter.
     declareNamedVariable(compiler);
+    typeAnnotation(compiler);
   }
   while (match(compiler, TOKEN_COMMA));
 }
@@ -2792,6 +2953,7 @@ void infixSignature(Compiler* compiler, Signature* signature)
   // Parse the parameter name.
   consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after operator name.");
   declareNamedVariable(compiler);
+  typeAnnotation(compiler);
   consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
 }
 
@@ -2817,6 +2979,7 @@ void mixedSignature(Compiler* compiler, Signature* signature)
 
     // Parse the parameter name.
     declareNamedVariable(compiler);
+    typeAnnotation(compiler);
     consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
   }
 }
@@ -2842,6 +3005,7 @@ static bool maybeSetter(Compiler* compiler, Signature* signature)
   // Parse the value parameter.
   consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after '='.");
   declareNamedVariable(compiler);
+  typeAnnotation(compiler);
   consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
 
   signature->arity++;
@@ -2871,7 +3035,19 @@ static void parameterList(Compiler* compiler, Signature* signature)
 {
   // The parameter list is optional.
   if (!match(compiler, TOKEN_LEFT_PAREN)) return;
-  
+
+  // A generic method declares its type parameters before its parameters:
+  // `map(of U)(fn)`. Telling them apart takes the name after `of`: `(of)`,
+  // `(of, x)` and `(of as Num)` are still a parameter named `of`. Without a
+  // second parameter list it is a getter.
+  if (isWord(&compiler->parser->current, "of") &&
+      peekNext(compiler) == TOKEN_NAME)
+  {
+    nextToken(compiler->parser);
+    finishTypeParameters(compiler);
+    if (!match(compiler, TOKEN_LEFT_PAREN)) return;
+  }
+
   signature->type = SIG_METHOD;
   
   // Allow new line before an empty argument list
@@ -3249,6 +3425,7 @@ static void forStatement(Compiler* compiler)
   // Remember the name of the loop variable.
   const char* name = compiler->parser->previous.start;
   int length = compiler->parser->previous.length;
+  typeAnnotation(compiler);
 
   consume(compiler, TOKEN_IN, "Expect 'in' after loop variable.");
   ignoreNewlines(compiler);
@@ -3633,6 +3810,31 @@ static bool method(Compiler* compiler, Variable classVariable)
     return method(compiler, classVariable);
   }
 
+  // A field declaration, `_items as List(of Item)`, gives a field its type.
+  // It compiles to nothing: the field still comes into being where the
+  // class's methods first use it, so its slot and the class's field count
+  // are the same with or without the declaration.
+  if (peek(compiler) == TOKEN_FIELD || peek(compiler) == TOKEN_STATIC_FIELD)
+  {
+    nextToken(compiler->parser);
+    if (compiler->numAttributes > 0)
+    {
+      error(compiler, "A field declaration cannot have attributes.");
+      wrenMapClear(compiler->parser->vm, compiler->attributes);
+      compiler->numAttributes = 0;
+    }
+
+    if (match(compiler, TOKEN_AS))
+    {
+      parseType(compiler, 0);
+    }
+    else
+    {
+      error(compiler, "Expect 'as' and a type after field name.");
+    }
+    return true;
+  }
+
   // TODO: What about foreign constructors?
   bool isForeign = match(compiler, TOKEN_FOREIGN);
   bool isStatic = match(compiler, TOKEN_STATIC);
@@ -3658,6 +3860,17 @@ static bool method(Compiler* compiler, Variable classVariable)
   signatureFn(&methodCompiler, &signature);
 
   methodCompiler.isInitializer = signature.type == SIG_INITIALIZER;
+
+  // The return annotation: `find(name) as Contact or Null`.
+  if (match(compiler, TOKEN_AS))
+  {
+    if (signature.type == SIG_INITIALIZER)
+    {
+      error(compiler, "A constructor cannot have a return type.");
+    }
+
+    parseType(compiler, 0);
+  }
   
   if (isStatic && signature.type == SIG_INITIALIZER)
   {
@@ -3730,10 +3943,22 @@ static void classDefinition(Compiler* compiler, bool isForeign)
   // Make a string constant for the name.
   emitConstant(compiler, classNameString);
 
+  // A generic class declares its type parameters after its name.
+  maybeTypeParameters(compiler,
+      "Expect 'of' after '(' in a class's type parameters.");
+
   // Load the superclass (if there is one).
   if (match(compiler, TOKEN_IS))
   {
     parsePrecedence(compiler, PREC_CALL);
+
+    // A generic superclass's type arguments, `is Store(of K)`. A call cannot
+    // end the superclass expression, so a "(" here can only begin them.
+    if (match(compiler, TOKEN_LEFT_PAREN))
+    {
+      consumeWord(compiler, "of", "Expect 'of' after '(' in type arguments.");
+      typeList(compiler, 0, "Expect ')' after type arguments.");
+    }
   }
   else
   {
@@ -3979,6 +4204,7 @@ static void variableDefinition(Compiler* compiler)
   // in scope in its own initializer.
   consume(compiler, TOKEN_NAME, "Expect variable name.");
   Token nameToken = compiler->parser->previous;
+  typeAnnotation(compiler);
 
   // Compile the initializer.
   if (match(compiler, TOKEN_EQ))
@@ -3997,11 +4223,74 @@ static void variableDefinition(Compiler* compiler)
   defineVariable(compiler, symbol);
 }
 
+// Parses a record declaration, a description of a Map with known string keys:
+//
+//     record Contact { name as String, phone as String or Null }
+//     record Page(of T) {
+//       items as List(of T)
+//       next as String or Null
+//     }
+//
+// Fields are separated by commas or newlines. A record is only a type: it
+// compiles to nothing and declares no variable.
+static void recordDefinition(Compiler* compiler)
+{
+  disallowAttributes(compiler);
+
+  // The "record" word and the record's name.
+  nextToken(compiler->parser);
+  nextToken(compiler->parser);
+
+  maybeTypeParameters(compiler,
+      "Expect 'of' after '(' in a record's type parameters.");
+
+  consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' after record name.");
+  ignoreNewlines(compiler);
+
+  while (!match(compiler, TOKEN_RIGHT_BRACE))
+  {
+    if (peek(compiler) == TOKEN_EOF)
+    {
+      nextToken(compiler->parser);
+      error(compiler, "Expect '}' after record fields.");
+      return;
+    }
+
+    consume(compiler, TOKEN_NAME, "Expect record field name.");
+    if (match(compiler, TOKEN_AS))
+    {
+      parseType(compiler, 0);
+    }
+    else
+    {
+      error(compiler, "Expect 'as' and a type after record field name.");
+    }
+
+    // Another field follows a comma or a newline; otherwise the record ends.
+    if (!match(compiler, TOKEN_COMMA) && !matchLine(compiler))
+    {
+      consume(compiler, TOKEN_RIGHT_BRACE, "Expect '}' after record fields.");
+      return;
+    }
+
+    ignoreNewlines(compiler);
+  }
+}
+
 // Compiles a "definition". These are the statements that bind new variables.
 // They can only appear at the top level of a block and are prohibited in places
 // like the non-curly body of an if or while.
 void definition(Compiler* compiler)
 {
+  // A record is a type, not a statement: it compiles to nothing, and marks no
+  // statement either, so the debug information is the same without it.
+  if (isWord(&compiler->parser->current, "record") &&
+      peekNext(compiler) == TOKEN_NAME)
+  {
+    recordDefinition(compiler);
+    return;
+  }
+
   recordStatement(compiler);
 
   if(matchAttribute(compiler)) {

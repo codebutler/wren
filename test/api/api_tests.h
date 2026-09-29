@@ -7,6 +7,7 @@
 
 #include "wren.h"
 
+#include "annotations.h"
 #include "benchmark.h"
 #include "call.h"
 #include "call_calls_foreign.h"

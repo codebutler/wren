@@ -19,6 +19,9 @@ WrenForeignMethodFn APITest_bindForeignMethod(
 
   WrenForeignMethodFn method = NULL;
 
+  method = annotationsBindMethod(fullName);
+  if (method != NULL) return method;
+
   method = benchmarkBindMethod(fullName);
   if (method != NULL) return method;
 

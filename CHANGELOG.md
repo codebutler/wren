@@ -1,5 +1,22 @@
 ## Unreleased
 
+### Language
+- Optional type annotations, parsed and erased. `as` gives a declared name a
+  type: parameters (`add(item as Item)`), returns (`find(name) as Contact or
+  Null`, `count as Num { … }`), `var total as Num = 0`, loop variables
+  (`for (c as Contact in list)`), block parameters (`{|c as Contact| … }`) and
+  field declarations in a class body (`_items as List(of Item)`). A type is a
+  name, `A or B`, type arguments `Map(of String, Contact)`, a function type
+  `Fn(Item) as Bool`, a string literal `"left"`, or a parenthesized type.
+  Classes, records and methods may declare type parameters, with optional
+  bounds: `class Cache(of K, V as Widget) is Store(of K)`,
+  `map(of U)(fn as Fn(T) as U)`. `record Contact { name as String }` describes
+  a Map with known keys. None of it reaches the compiled function: the
+  bytecode, constants and debug information of an annotated program are those
+  of the program with its annotations deleted, and `test/api/annotations`
+  holds it to that. `of`, `or`, `record` and `Fn` stay ordinary names outside
+  a type; `(of)`, `(of, x)` and `(of as Num)` are still parameters named `of`.
+
 ### API
 - Add a debugger line hook, `wrenSetLineHook`. It is called before the first
   instruction of each new line. The interpreter loop is now compiled twice
