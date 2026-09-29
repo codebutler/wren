@@ -110,6 +110,7 @@ endif
 
 OBJECTS :=
 
+OBJECTS += $(OBJDIR)/annotations.o
 OBJECTS += $(OBJDIR)/api_tests.o
 OBJECTS += $(OBJDIR)/benchmark.o
 OBJECTS += $(OBJDIR)/call.o
@@ -193,6 +194,9 @@ endif
 # File Rules
 # #############################################
 
+$(OBJDIR)/annotations.o: ../../test/api/annotations.c
+	@echo $(notdir $<)
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/api_tests.o: ../../test/api/api_tests.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
