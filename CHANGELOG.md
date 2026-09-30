@@ -7,7 +7,8 @@
   (`for (c as Contact in list)`), block parameters (`{|c as Contact| … }`) and
   field declarations in a class body (`_items as List(of Item)`). A type is a
   name, `A or B`, type arguments `Map(of String, Contact)`, a function type
-  `Fn(Item) as Bool`, a string literal `"left"`, or a parenthesized type.
+  `Fn(Item) as Bool`, a string literal `"left"`, a number literal `1` (a
+  heading's `1 or 2 or 3`), or a parenthesized type.
   Classes, records and methods may declare type parameters, with optional
   bounds: `class Cache(of K, V as Widget) is Store(of K)`,
   `map(of U)(fn as Fn(T) as U)`. `record Contact { name as String }` describes

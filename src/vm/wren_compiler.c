@@ -2031,7 +2031,7 @@ static void typeList(Compiler* compiler, int depth, const char* errorMessage)
 }
 
 // Parses one alternative of a type: a name with optional type arguments, a
-// function type, a string literal, or a parenthesized type.
+// function type, a string or number literal, or a parenthesized type.
 static void typePrimary(Compiler* compiler, int depth)
 {
   if (depth > MAX_TYPE_DEPTH)
@@ -2047,8 +2047,10 @@ static void typePrimary(Compiler* compiler, int depth)
     return;
   }
 
-  // A literal type: one exact string, as in `"left" or "right"`.
+  // A literal type: one exact string or number, as in `"left" or "right"` or
+  // `1 or 2 or 3`.
   if (match(compiler, TOKEN_STRING)) return;
+  if (match(compiler, TOKEN_NUMBER)) return;
 
   if (!match(compiler, TOKEN_NAME))
   {
