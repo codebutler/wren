@@ -225,6 +225,25 @@ check.call("records", [
   ""
 ]) // expect: records: same
 
+// Number literal types: a heading's level, a ratio, a hex constant.
+check.call("number literals", [
+  "class H {",
+  "  static size(level as 1 or 2 or 3) as 24 or 18 or 14 { [24, 18, 14][level - 1] }",
+  "  f(x as 0.5 or 0x10 or Null) { x }",
+  "}",
+  "var ratio as 0.5 or 1.5 = 0.5",
+  "for (n as 1 or 2 in [1, 2]) System.print(n)",
+  "var pick = Fn.new {|n as 1 or 2| n }"
+], [
+  "class H {",
+  "  static size(level) { [24, 18, 14][level - 1] }",
+  "  f(x) { x }",
+  "}",
+  "var ratio = 0.5",
+  "for (n in [1, 2]) System.print(n)",
+  "var pick = Fn.new {|n| n }"
+]) // expect: number literals: same
+
 // `as` still renames an import, beside annotations that use it too.
 check.call("imports", [
   "import \"a\" for Water as H2O, Salt",
@@ -240,6 +259,8 @@ check.call("imports", [
 System.print(Annotations.errors("var a as = 1"))
 // expect: line 1: Error at 'as': Expect a type.
 System.print(Annotations.errors("var a as\nNum"))
+// expect: line 1: Error at 'as': Expect a type.
+System.print(Annotations.errors("var a as -1 = 1"))
 // expect: line 1: Error at 'as': Expect a type.
 System.print(Annotations.errors("var a as List(Num) = 1"))
 // expect: line 1: Error at '(': Expect 'of' after '(' in type arguments.
