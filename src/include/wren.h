@@ -269,6 +269,21 @@ typedef struct
   // User-defined data associated with the VM.
   void* userData;
 
+  // Check type annotations at run time. When true, the compiler emits, at the
+  // start of each method, a test of each annotated parameter, and a test of
+  // the result at each return of a method whose signature is annotated. A
+  // value that does not fit aborts the fiber with
+  // "TypeError: expected Contact for 'c', got Num". Only a type the compiler
+  // can see as a class is checked: a class name (an argument list is
+  // checked shallowly: `List(of Item)` is `is List`), a function type (`is
+  // Fn`), and `or` of those. An annotation with anything else in it (a
+  // literal, `Any`, a name that is not a class in scope where the method is
+  // compiled) is not checked. Block parameters are not checked.
+  //
+  // Defaults to false, which compiles an annotated program to exactly what
+  // it compiles to without its annotations.
+  bool checkAnnotations;
+
 } WrenConfiguration;
 
 typedef enum

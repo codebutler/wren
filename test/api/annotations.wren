@@ -5,6 +5,7 @@
 class Annotations {
   foreign static errors(source) as String
   foreign static compare(annotated as String, plain as String) as String
+  foreign static checked(source as String) as String
 }
 
 var check = Fn.new {|name as String, annotated as List(of String), plain as List(of String)|
@@ -308,3 +309,90 @@ System.print(Annotations.errors("var a = [1]\na as Num = 2"))
 // expect: line 2: Error at 'as': Expect end of file.
 System.print(Annotations.errors("var a as " + "(" * 70 + "Num" + ")" * 70))
 // expect: line 1: Error at '(': Type annotation is nested too deeply.
+
+// Run-time checks (WrenConfiguration.checkAnnotations): a parameter is tested
+// on entry and a result at each return; a value that does not fit aborts the
+// fiber. Only classes the compiler can see are tested.
+var checked = Fn.new {|lines| System.print(Annotations.checked(lines.join("\n")).trim()) }
+
+checked.call([
+  "class Contact {",
+  "  construct new(name as String) { _name = name }",
+  "  name as String { _name }",
+  "}",
+  "class Book {",
+  "  static add(c as Contact) { System.print(c.name) }",
+  "}",
+  "Book.add(Contact.new(\"Ada\"))",
+  "Book.add(3)"
+]) // expect: Ada
+// expect: error: TypeError: expected Contact for 'c', got Num
+
+checked.call([
+  "class A {",
+  "  static f(x as Num or Null) { x }",
+  "  static g(items as List(of String)) { items.count }",
+  "  static h(fn as Fn(Num) as Num) { fn.call(1) }",
+  "}",
+  "System.print(A.f(null))",
+  "System.print(A.g([\"a\"]))",
+  "System.print(A.h {|n| n + 1 })",
+  "A.g(\"no\")"
+]) // expect: null
+// expect: 1
+// expect: 2
+// expect: error: TypeError: expected List(of String) for 'items', got String
+
+checked.call([
+  "class A {",
+  "  static find(n) as String or Null {",
+  "    if (n == 0) return null",
+  "    if (n == 1) return \"one\"",
+  "    return n",
+  "  }",
+  "  static count as Num { \"many\" }",
+  "  static none as String {",
+  "  }",
+  "}",
+  "System.print(A.find(0))",
+  "System.print(A.find(1))",
+  "Fiber.new { A.find(2) }.try()",
+  "System.print(Fiber.new { A.count }.try())",
+  "A.none"
+]) // expect: null
+// expect: one
+// expect: TypeError: expected Num from count, got String
+// expect: error: TypeError: expected String from none, got Null
+
+// Not checked: a literal, Any, a record, a type parameter, a refinement the
+// VM does not know, a class declared further down, a block's parameter.
+checked.call([
+  "record Pt { x as Num }",
+  "class Gen(of T) {",
+  "  static a(side as \"left\" or \"right\") { side }",
+  "  static b(v as Any) { v }",
+  "  static c(p as Pt) { p }",
+  "  static d(t as T) { t }",
+  "  static e(n as Int) { n }",
+  "  static f(l as Later) { l }",
+  "}",
+  "class Later {}",
+  "System.print(Gen.a(1))",
+  "System.print(Gen.b(2))",
+  "System.print(Gen.c(3))",
+  "System.print(Gen.d(4))",
+  "System.print(Gen.e(5))",
+  "System.print(Gen.f(6))",
+  "System.print(Fn.new {|x as String| x }.call(7))"
+]) // expect: 1
+// expect: 2
+// expect: 3
+// expect: 4
+// expect: 5
+// expect: 6
+// expect: 7
+
+// Off (the default), nothing is tested.
+System.print(Annotations.compare(
+  "class A { static f(c as Num) as String { c } }",
+  "class A { static f(c) { c } }")) // expect: same
