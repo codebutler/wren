@@ -18,6 +18,13 @@
   holds it to that. `of`, `or`, `record` and `Fn` stay ordinary names outside
   a type; `(of)`, `(of, x)` and `(of as Num)` are still parameters named `of`.
 
+### VM
+- Symbol tables (method names, module variables, a class's fields) find a
+  name through a hash index instead of a scan. The compiler looks up a method
+  name at every declaration and call site, and the method-name table holds
+  every signature any loaded module uses, so compiling a large library was
+  quadratic in its size.
+
 ### API
 - Add `WrenConfiguration.checkAnnotations` (off by default): the compiler
   tests each annotated method parameter on entry and an annotated method's

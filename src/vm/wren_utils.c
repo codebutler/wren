@@ -7,25 +7,86 @@ DEFINE_BUFFER(Byte, uint8_t);
 DEFINE_BUFFER(Int, int);
 DEFINE_BUFFER(String, ObjString*);
 
+// FNV-1a, over the name's bytes.
+static uint32_t hashName(const char* name, size_t length)
+{
+  uint32_t hash = 2166136261u;
+  for (size_t i = 0; i < length; i++)
+  {
+    hash ^= (uint8_t)name[i];
+    hash *= 16777619;
+  }
+  return hash;
+}
+
+// Puts [symbol] in the index unless an earlier symbol has the same name: the
+// first one keeps it, as a scan from the start would find it.
+static void indexSymbol(SymbolTable* symbols, int symbol)
+{
+  ObjString* name = symbols->data[symbol];
+  uint32_t mask = (uint32_t)symbols->slotCapacity - 1;
+  uint32_t slot = hashName(name->value, name->length) & mask;
+  while (symbols->slots[slot] != 0)
+  {
+    ObjString* other = symbols->data[symbols->slots[slot] - 1];
+    if (other->length == name->length &&
+        memcmp(other->value, name->value, name->length) == 0)
+    {
+      return;
+    }
+    slot = (slot + 1) & mask;
+  }
+  symbols->slots[slot] = symbol + 1;
+}
+
 void wrenSymbolTableInit(SymbolTable* symbols)
 {
-  wrenStringBufferInit(symbols);
+  symbols->data = NULL;
+  symbols->count = 0;
+  symbols->capacity = 0;
+  symbols->slots = NULL;
+  symbols->slotCapacity = 0;
 }
 
 void wrenSymbolTableClear(WrenVM* vm, SymbolTable* symbols)
 {
-  wrenStringBufferClear(vm, symbols);
+  wrenReallocate(vm, symbols->data, symbols->capacity * sizeof(ObjString*), 0);
+  wrenReallocate(vm, symbols->slots, symbols->slotCapacity * sizeof(int), 0);
+  wrenSymbolTableInit(symbols);
 }
 
 int wrenSymbolTableAdd(WrenVM* vm, SymbolTable* symbols,
                        const char* name, size_t length)
 {
   ObjString* symbol = AS_STRING(wrenNewStringLength(vm, name, length));
-  
+
   wrenPushRoot(vm, &symbol->obj);
-  wrenStringBufferWrite(vm, symbols, symbol);
+  if (symbols->capacity < symbols->count + 1)
+  {
+    int capacity = wrenPowerOf2Ceil(symbols->count + 1);
+    symbols->data = (ObjString**)wrenReallocate(vm, symbols->data,
+        symbols->capacity * sizeof(ObjString*), capacity * sizeof(ObjString*));
+    symbols->capacity = capacity;
+  }
+  symbols->data[symbols->count++] = symbol;
+
+  if (symbols->slotCapacity < symbols->count * 2)
+  {
+    int slotCapacity = symbols->slotCapacity == 0 ? 16 : symbols->slotCapacity;
+    while (slotCapacity < symbols->count * 2) slotCapacity *= 2;
+    wrenReallocate(vm, symbols->slots, symbols->slotCapacity * sizeof(int), 0);
+    symbols->slots = (int*)wrenReallocate(vm, NULL, 0,
+                                          slotCapacity * sizeof(int));
+    memset(symbols->slots, 0, slotCapacity * sizeof(int));
+    symbols->slotCapacity = slotCapacity;
+    for (int i = 0; i < symbols->count; i++) indexSymbol(symbols, i);
+  }
+  else
+  {
+    indexSymbol(symbols, symbols->count - 1);
+  }
   wrenPopRoot(vm);
-  
+
   return symbols->count - 1;
 }
 
@@ -43,13 +104,18 @@ int wrenSymbolTableEnsure(WrenVM* vm, SymbolTable* symbols,
 int wrenSymbolTableFind(const SymbolTable* symbols,
                         const char* name, size_t length)
 {
-  // See if the symbol is already defined.
-  // TODO: O(n). Do something better.
-  for (int i = 0; i < symbols->count; i++)
+  if (symbols->slotCapacity == 0) return -1;
+  uint32_t mask = (uint32_t)symbols->slotCapacity - 1;
+  uint32_t slot = hashName(name, length) & mask;
+  while (symbols->slots[slot] != 0)
   {
-    if (wrenStringEqualsCString(symbols->data[i], name, length)) return i;
+    int symbol = symbols->slots[slot] - 1;
+    if (wrenStringEqualsCString(symbols->data[symbol], name, length))
+    {
+      return symbol;
+    }
+    slot = (slot + 1) & mask;
   }
-
   return -1;
 }
 

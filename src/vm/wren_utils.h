@@ -67,8 +67,23 @@ DECLARE_BUFFER(Byte, uint8_t);
 DECLARE_BUFFER(Int, int);
 DECLARE_BUFFER(String, ObjString*);
 
-// TODO: Change this to use a map.
-typedef StringBuffer SymbolTable;
+// A list of unique names, each found by its index. The names are kept in
+// order in [data] (the index of a name is its symbol); [slots] is an
+// open-addressing hash index over them, so a lookup does not scan every name.
+// The compiler looks up a method name at every declaration and call site, and
+// [vm->methodNames] holds every signature any loaded module uses: a linear
+// scan made compiling a large library quadratic.
+typedef struct
+{
+  ObjString** data;
+  int count;
+  int capacity;
+
+  // Each slot is a symbol + 1, or 0 when empty. [slotCapacity] is zero or a
+  // power of two, kept at least twice [count].
+  int* slots;
+  int slotCapacity;
+} SymbolTable;
 
 // Initializes the symbol table.
 void wrenSymbolTableInit(SymbolTable* symbols);
