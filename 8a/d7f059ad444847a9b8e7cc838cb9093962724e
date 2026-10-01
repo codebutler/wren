@@ -1,0 +1,37 @@
+CHANGELOG.md
+  s_1a5e6f788db575::t_4553058d7042c0 22-29
+src/include/wren.h
+  s_1a5e6f788db575::t_607b7983bd683f 272-286
+src/vm/wren_compiler.c
+  s_556a238fcd6197::t_b4d7701fbed4c5 334-356,421-431,650-653,1983-1984,2003,2084-2086,2089,2097-2101,2105,2112-2126,2168-2198,2246,2543-2623,3132,3157,3182,3781,4047,4081-4091
+src/vm/wren_vm.c
+  s_1a5e6f788db575::t_1968c6f38a7616 58
+test/api/annotations.c
+  s_1a5e6f788db575::t_23f9deed1706d9 153-190,193
+test/api/annotations.wren
+  s_1a5e6f788db575::t_e5dc9c93c040fd 8,312-398
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8ad7f059ad444847a9b8e7cc838cb9093962724e",
+  "prompts": {},
+  "sessions": {
+    "s_1a5e6f788db575": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f024959d-9f51-4986-a315-37a15523d936",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    },
+    "s_556a238fcd6197": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f4e4-955a-7682-826e-56de0f0ec6e6",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    }
+  }
+}
