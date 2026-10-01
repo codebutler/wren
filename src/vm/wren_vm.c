@@ -55,6 +55,7 @@ void wrenInitConfiguration(WrenConfiguration* config)
   config->minHeapSize = 1024 * 1024;
   config->heapGrowthPercent = 50;
   config->userData = NULL;
+  config->checkAnnotations = false;
 }
 
 // The countdown with no interrupt hook installed. It still runs out, rarely,

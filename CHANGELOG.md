@@ -19,6 +19,14 @@
   a type; `(of)`, `(of, x)` and `(of as Num)` are still parameters named `of`.
 
 ### API
+- Add `WrenConfiguration.checkAnnotations` (off by default): the compiler
+  tests each annotated method parameter on entry and an annotated method's
+  result at each return, and a value that does not fit aborts the fiber with
+  `TypeError: expected Contact for 'c', got Num`. Only classes the compiler
+  can see where the method is compiled are tested (`List(of T)` as `List`,
+  `Fn(…)` as `Fn`, `A or B`); an annotation with a literal, `Any`, or a name
+  that is not a class in scope is not, and nor are block parameters. Off, an
+  annotated program still compiles to exactly the unannotated one.
 - Add a debugger line hook, `wrenSetLineHook`. It is called before the first
   instruction of each new line. The interpreter loop is now compiled twice
   (`wren_interpreter.inc`): without a hook the plain loop runs exactly as

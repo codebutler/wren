@@ -331,6 +331,29 @@ typedef struct
   Signature* signature;
 } ClassInfo;
 
+// The most alternatives one checked annotation may have (`A or B or …`); an
+// annotation with more is not checked.
+#define MAX_TYPE_CHECK 4
+
+// What an annotation tells a run-time check (WrenConfiguration
+// .checkAnnotations): the names of its top-level alternatives, and its text
+// for the error message. [count] is -1 when the annotation cannot be checked.
+typedef struct
+{
+  int count;
+  Token names[MAX_TYPE_CHECK];
+  const char* start;
+  int length;
+} TypeCheck;
+
+// A parameter whose annotation is checked at the start of its method.
+typedef struct
+{
+  int slot;
+  Token name;
+  TypeCheck type;
+} ParamCheck;
+
 struct sCompiler
 {
   Parser* parser;
@@ -395,6 +418,17 @@ struct sCompiler
   // locals then mirror the frame's and its captured variables resolve here.
   ObjFn* frameFn;
   int frameOffset;
+
+  // Run-time checks (WrenConfiguration.checkAnnotations). The annotation
+  // being parsed records its alternatives into [typeCapture] when it is set.
+  // A method's annotated parameters, then its result's annotation and the
+  // hidden local each return stores its value in.
+  TypeCheck* typeCapture;
+  ParamCheck paramChecks[MAX_PARAMETERS];
+  int numParamChecks;
+  TypeCheck resultCheck;
+  int resultSlot;
+  char resultWhere[MAX_METHOD_SIGNATURE];
 };
 
 // Describes where a variable is declared.
@@ -613,6 +647,10 @@ static void initCompiler(Compiler* compiler, Parser* parser, Compiler* parent,
   compiler->loop = NULL;
   compiler->enclosingClass = NULL;
   compiler->isInitializer = false;
+  compiler->typeCapture = NULL;
+  compiler->numParamChecks = 0;
+  compiler->resultCheck.count = -1;
+  compiler->resultSlot = -1;
   
   // Initialize these to NULL before allocating in case a GC gets triggered in
   // the middle of initializing the compiler.
@@ -1942,6 +1980,8 @@ static bool finishBlock(Compiler* compiler)
 //
 // If [Compiler->isInitializer] is `true`, this is the body of a constructor
 // initializer. In that case, this adds the code to ensure it returns `this`.
+static void emitResultCheck(Compiler* compiler);
+
 static void finishBody(Compiler* compiler)
 {
   bool isExpressionBody = finishBlock(compiler);
@@ -1960,6 +2000,7 @@ static void finishBody(Compiler* compiler)
     emitOp(compiler, CODE_NULL);
   }
 
+  if (!compiler->isInitializer) emitResultCheck(compiler);
   emitOp(compiler, CODE_RETURN);
 }
 
@@ -2040,8 +2081,12 @@ static void typePrimary(Compiler* compiler, int depth)
     return;
   }
 
+  // A run-time check reads the top level's alternatives: a class name each.
+  TypeCheck* capture = depth == 0 ? compiler->typeCapture : NULL;
+
   if (match(compiler, TOKEN_LEFT_PAREN))
   {
+    if (capture != NULL) capture->count = -1;
     parseType(compiler, depth + 1);
     consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after type.");
     return;
@@ -2049,15 +2094,34 @@ static void typePrimary(Compiler* compiler, int depth)
 
   // A literal type: one exact string or number, as in `"left" or "right"` or
   // `1 or 2 or 3`.
-  if (match(compiler, TOKEN_STRING)) return;
-  if (match(compiler, TOKEN_NUMBER)) return;
+  if (match(compiler, TOKEN_STRING) || match(compiler, TOKEN_NUMBER))
+  {
+    if (capture != NULL) capture->count = -1;
+    return;
+  }
 
   if (!match(compiler, TOKEN_NAME))
   {
+    if (capture != NULL) capture->count = -1;
     // Report the gap at the word before it (`as`, `or`, `of` or `,`) and leave
     // what follows to be parsed as it would be without the annotation.
     error(compiler, "Expect a type.");
     return;
+  }
+
+  // A name: the class (a function type's `Fn`, type arguments' class) is
+  // what a check tests. `Any` says nothing to test.
+  if (capture != NULL && capture->count >= 0)
+  {
+    if (isWord(&compiler->parser->previous, "Any") ||
+        capture->count == MAX_TYPE_CHECK)
+    {
+      capture->count = -1;
+    }
+    else
+    {
+      capture->names[capture->count++] = compiler->parser->previous;
+    }
   }
 
   if (peek(compiler) != TOKEN_LEFT_PAREN) return;
@@ -2099,6 +2163,37 @@ static void parseType(Compiler* compiler, int depth)
 static void typeAnnotation(Compiler* compiler)
 {
   if (match(compiler, TOKEN_AS)) parseType(compiler, 0);
+}
+
+// Parses a type after its `as` and, when the VM checks annotations, records
+// what [check] tests. Emits nothing.
+static void capturedType(Compiler* compiler, TypeCheck* check)
+{
+  check->count = compiler->parser->vm->config.checkAnnotations ? 0 : -1;
+  check->start = compiler->parser->current.start;
+  compiler->typeCapture = check->count == 0 ? check : NULL;
+  parseType(compiler, 0);
+  compiler->typeCapture = NULL;
+  Token* last = &compiler->parser->previous;
+  check->length = (int)(last->start + last->length - check->start);
+}
+
+// Parses a parameter's optional annotation, after its name was declared in
+// local [slot]. When the VM checks annotations, its method tests the
+// parameter on entry (emitParamChecks).
+static void parameterAnnotation(Compiler* compiler, int slot)
+{
+  Token name = compiler->parser->previous;
+  if (!match(compiler, TOKEN_AS)) return;
+
+  TypeCheck check;
+  capturedType(compiler, &check);
+  if (check.count <= 0 || compiler->numParamChecks >= MAX_PARAMETERS) return;
+
+  ParamCheck* param = &compiler->paramChecks[compiler->numParamChecks++];
+  param->slot = slot;
+  param->name = name;
+  param->type = check;
 }
 
 // Parses a declaration's type parameters after its "(" and "of": each a name
@@ -2148,8 +2243,7 @@ static void finishParameterList(Compiler* compiler, Signature* signature)
     validateNumParameters(compiler, ++signature->arity);
 
     // Define a local variable in the method for the parameter.
-    declareNamedVariable(compiler);
-    typeAnnotation(compiler);
+    parameterAnnotation(compiler, declareNamedVariable(compiler));
   }
   while (match(compiler, TOKEN_COMMA));
 }
@@ -2444,6 +2538,87 @@ static void loadCoreVariable(Compiler* compiler, const char* name)
                                    name, strlen(name));
   ASSERT(symbol != -1, "Should have already defined core name.");
   emitShortArg(compiler, CODE_LOAD_MODULE_VAR, symbol);
+}
+
+// Emits a test that the value in local [slot] is one of [check]'s classes,
+// aborting the fiber with "TypeError: expected <annotation> <where>, got
+// <its class>" when it is not. Emits nothing when one of the classes is not
+// in scope here (a record's name, a type parameter, a class declared further
+// down the module): only what the compiler can see is checked.
+static void emitTypeCheck(Compiler* compiler, int slot, TypeCheck* check,
+                          const char* where)
+{
+  if (check->count <= 0) return;
+
+  Variable classes[MAX_TYPE_CHECK];
+  for (int i = 0; i < check->count; i++)
+  {
+    classes[i] = resolveName(compiler, check->names[i].start,
+                             check->names[i].length);
+    if (classes[i].index == -1) return;
+  }
+
+  // value is A || value is B || ...
+  int exits[MAX_TYPE_CHECK];
+  for (int i = 0; i < check->count; i++)
+  {
+    loadLocal(compiler, slot);
+    loadVariable(compiler, classes[i]);
+    callMethod(compiler, 1, "is(_)", 5);
+    if (i < check->count - 1) exits[i] = emitJump(compiler, CODE_OR);
+  }
+  for (int i = 0; i < check->count - 1; i++) patchJump(compiler, exits[i]);
+
+  // If it fits, skip the abort.
+  callMethod(compiler, 0, "!", 1);
+  int fits = emitJump(compiler, CODE_JUMP_IF);
+
+  char message[MAX_METHOD_SIGNATURE + 256];
+  int length = snprintf(message, sizeof(message),
+                        "TypeError: expected %.*s %s, got ",
+                        check->length > 160 ? 160 : check->length,
+                        check->start, where);
+  if (length >= (int)sizeof(message)) length = (int)sizeof(message) - 1;
+
+  loadCoreVariable(compiler, "Fiber");
+  emitConstant(compiler, wrenNewStringLength(compiler->parser->vm, message,
+                                             length));
+  loadLocal(compiler, slot);
+  callMethod(compiler, 0, "type", 4);
+  callMethod(compiler, 0, "name", 4);
+  callMethod(compiler, 1, "+(_)", 4);
+  callMethod(compiler, 1, "abort(_)", 8);
+  emitOp(compiler, CODE_POP);
+
+  patchJump(compiler, fits);
+}
+
+// Emits the tests of a method's annotated parameters (at its start).
+static void emitParamChecks(Compiler* compiler)
+{
+  for (int i = 0; i < compiler->numParamChecks; i++)
+  {
+    ParamCheck* param = &compiler->paramChecks[i];
+    char where[MAX_VARIABLE_NAME + 16];
+    snprintf(where, sizeof(where), "for '%.*s'", param->name.length,
+             param->name.start);
+    emitTypeCheck(compiler, param->slot, &param->type, where);
+  }
+}
+
+// At a return of a method whose result is checked: stores the value on top
+// of the stack in the hidden result local (it stays on the stack) and tests
+// it.
+static void emitResultCheck(Compiler* compiler)
+{
+  if (compiler->resultSlot < 0) return;
+
+  emitByteArg(compiler, CODE_STORE_LOCAL, compiler->resultSlot);
+
+  // "from find(_)": the method's own signature.
+  char where[MAX_METHOD_SIGNATURE + 8];
+  snprintf(where, sizeof(where), "from %s", compiler->resultWhere);
+  emitTypeCheck(compiler, compiler->resultSlot, &compiler->resultCheck, where);
 }
 
 // A parenthesized expression.
@@ -2954,8 +3129,7 @@ void infixSignature(Compiler* compiler, Signature* signature)
 
   // Parse the parameter name.
   consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after operator name.");
-  declareNamedVariable(compiler);
-  typeAnnotation(compiler);
+  parameterAnnotation(compiler, declareNamedVariable(compiler));
   consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
 }
 
@@ -2980,8 +3154,7 @@ void mixedSignature(Compiler* compiler, Signature* signature)
     signature->arity = 1;
 
     // Parse the parameter name.
-    declareNamedVariable(compiler);
-    typeAnnotation(compiler);
+    parameterAnnotation(compiler, declareNamedVariable(compiler));
     consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
   }
 }
@@ -3006,8 +3179,7 @@ static bool maybeSetter(Compiler* compiler, Signature* signature)
 
   // Parse the value parameter.
   consume(compiler, TOKEN_LEFT_PAREN, "Expect '(' after '='.");
-  declareNamedVariable(compiler);
-  typeAnnotation(compiler);
+  parameterAnnotation(compiler, declareNamedVariable(compiler));
   consume(compiler, TOKEN_RIGHT_PAREN, "Expect ')' after parameter name.");
 
   signature->arity++;
@@ -3606,6 +3778,7 @@ void statement(Compiler* compiler)
       expression(compiler);
     }
 
+    if (!compiler->isInitializer) emitResultCheck(compiler);
     emitOp(compiler, CODE_RETURN);
   }
   else if (match(compiler, TOKEN_WHILE))
@@ -3871,7 +4044,7 @@ static bool method(Compiler* compiler, Variable classVariable)
       error(compiler, "A constructor cannot have a return type.");
     }
 
-    parseType(compiler, 0);
+    capturedType(compiler, &methodCompiler.resultCheck);
   }
   
   if (isStatic && signature.type == SIG_INITIALIZER)
@@ -3905,6 +4078,17 @@ static bool method(Compiler* compiler, Variable classVariable)
   else
   {
     consume(compiler, TOKEN_LEFT_BRACE, "Expect '{' to begin method body.");
+
+    // Run-time checks: the parameters on entry, then a hidden local each
+    // return stores the result in before it is tested.
+    emitParamChecks(&methodCompiler);
+    if (methodCompiler.resultCheck.count > 0)
+    {
+      memcpy(methodCompiler.resultWhere, fullSignature, length + 1);
+      emitOp(&methodCompiler, CODE_NULL);
+      methodCompiler.resultSlot = addLocal(&methodCompiler, "result ", 7);
+    }
+
     finishBody(&methodCompiler);
     endCompiler(&methodCompiler, fullSignature, length);
   }

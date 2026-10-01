@@ -150,8 +150,47 @@ static void compare(WrenVM* vm)
   wrenSetSlotString(vm, 0, difference);
 }
 
+// Annotations.checked(source) runs [source] in a fresh VM with
+// checkAnnotations on and returns what it printed, then "error: <message>"
+// for the runtime error that ended it (or the first compile error).
+static char checkedOutput[4096];
+
+static void appendChecked(const char* text)
+{
+  size_t used = strlen(checkedOutput);
+  snprintf(checkedOutput + used, sizeof(checkedOutput) - used, "%s", text);
+}
+
+static void checkedWrite(WrenVM* vm, const char* text) { appendChecked(text); }
+
+static void checkedError(WrenVM* vm, WrenErrorType type, const char* module,
+                         int line, const char* message)
+{
+  if (type == WREN_ERROR_STACK_TRACE) return;
+  appendChecked("error: ");
+  appendChecked(message);
+}
+
+static void runChecked(WrenVM* vm)
+{
+  const char* source = wrenGetSlotString(vm, 1);
+
+  checkedOutput[0] = '\0';
+  WrenConfiguration config;
+  wrenInitConfiguration(&config);
+  config.writeFn = checkedWrite;
+  config.errorFn = checkedError;
+  config.checkAnnotations = true;
+  WrenVM* checked = wrenNewVM(&config);
+  wrenInterpret(checked, "checked", source);
+  wrenFreeVM(checked);
+
+  wrenSetSlotString(vm, 0, checkedOutput);
+}
+
 WrenForeignMethodFn annotationsBindMethod(const char* signature)
 {
+  if (strcmp(signature, "static Annotations.checked(_)") == 0) return runChecked;
   if (strcmp(signature, "static Annotations.errors(_)") == 0) return compileErrors;
   if (strcmp(signature, "static Annotations.compare(_,_)") == 0) return compare;
 
