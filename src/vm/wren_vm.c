@@ -1563,6 +1563,13 @@ void wrenSetUserData(WrenVM* vm, void* userData)
 	vm->config.userData = userData;
 }
 
+void wrenSetRandomSeed(WrenVM* vm, unsigned int seed)
+{
+  vm->hasRandomSeed = true;
+  vm->randomSeed = seed;
+  vm->randomCount = 0;
+}
+
 // Debugging -------------------------------------------------------------------
 
 void wrenSetLineHook(WrenVM* vm, WrenLineHookFn hook)

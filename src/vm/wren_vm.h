@@ -143,6 +143,13 @@ struct WrenVM
   // and execution continues where the frame was moved to.
   bool errorResumed;
 
+  // Set by wrenSetRandomSeed: an unseeded `Random.new()` seeds from
+  // [randomSeed] and [randomCount], the number of them made since, instead of
+  // the clock.
+  bool hasRandomSeed;
+  unsigned int randomSeed;
+  unsigned int randomCount;
+
   // While a hook runs: the stopped fiber's stack top (as an offset) to
   // restore when it returns. wrenSetFrameLine lowers it.
   int hookStackTop;
