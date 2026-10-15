@@ -566,6 +566,17 @@ WREN_API void* wrenGetUserData(WrenVM* vm);
 // Sets user data associated with the WrenVM.
 WREN_API void wrenSetUserData(WrenVM* vm, void* userData);
 
+// Makes the optional random module's `Random.new()` deterministic in [vm].
+//
+// From now on, each `Random.new()` with no seed seeds itself from [seed] and
+// how many such Randoms [vm] has made since this call, instead of from the
+// clock: the first gets the stream `Random.new(seed)` gets, and each later
+// one a different stream. So two Randoms in one program differ, and the same
+// program run again with the same seed draws the same numbers. A Random given
+// a seed (`Random.new(n)`, `Random.new([...])`) is unaffected, and a VM that
+// never calls this seeds from the clock as before.
+WREN_API void wrenSetRandomSeed(WrenVM* vm, unsigned int seed);
+
 // Debugging -------------------------------------------------------------------
 
 // A function the VM calls before it executes the first instruction of a new

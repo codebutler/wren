@@ -47,7 +47,18 @@ static void randomSeed0(WrenVM* vm)
 {
   Well512* well = (Well512*)wrenGetSlotForeign(vm, 0);
 
-  srand((uint32_t)time(NULL));
+  if (vm->hasRandomSeed)
+  {
+    // The embedder made unseeded Randoms deterministic (wrenSetRandomSeed).
+    // The first gets the stream of `Random.new(seed)`; each later one steps
+    // the seed by the golden ratio, so no two of them share a stream.
+    srand(vm->randomSeed + vm->randomCount * 0x9e3779b9u);
+    vm->randomCount++;
+  }
+  else
+  {
+    srand((uint32_t)time(NULL));
+  }
   for (int i = 0; i < 16; i++)
   {
     well->state[i] = rand();

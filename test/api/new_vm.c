@@ -82,11 +82,31 @@ static void gcEveryAllocation(WrenVM* vm)
   wrenSetSlotString(vm, 0, stressOutput);
 }
 
+// Runs the source in slot 1 in a VM whose unseeded Randoms are seeded from
+// slot 2 (wrenSetRandomSeed), and returns what it printed.
+static void seededRandom(WrenVM* vm)
+{
+  WrenConfiguration config;
+  wrenInitConfiguration(&config);
+  config.writeFn = stressWrite;
+
+  stressOutput[0] = '\0';
+  WrenVM* otherVM = wrenNewVM(&config);
+  wrenSetRandomSeed(otherVM, (unsigned int)wrenGetSlotDouble(vm, 2));
+  WrenInterpretResult result =
+      wrenInterpret(otherVM, "main", wrenGetSlotString(vm, 1));
+  wrenFreeVM(otherVM);
+
+  if (result != WREN_RESULT_SUCCESS) strcpy(stressOutput, "error");
+  wrenSetSlotString(vm, 0, stressOutput);
+}
+
 WrenForeignMethodFn newVMBindMethod(const char* signature)
 {
   if (strcmp(signature, "static VM.nullConfig()") == 0) return nullConfig;
   if (strcmp(signature, "static VM.multipleInterpretCalls()") == 0) return multipleInterpretCalls;
   if (strcmp(signature, "static VM.gcEveryAllocation(_)") == 0) return gcEveryAllocation;
+  if (strcmp(signature, "static VM.seededRandom(_,_)") == 0) return seededRandom;
 
   return NULL;
 }
