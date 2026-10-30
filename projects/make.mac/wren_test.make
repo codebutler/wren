@@ -128,6 +128,7 @@ OBJECTS += $(OBJDIR)/debug.o
 OBJECTS += $(OBJDIR)/debugger.o
 OBJECTS += $(OBJDIR)/replace_methods.o
 OBJECTS += $(OBJDIR)/error.o
+OBJECTS += $(OBJDIR)/report_errors.o
 OBJECTS += $(OBJDIR)/foreign_class.o
 OBJECTS += $(OBJDIR)/get_variable.o
 OBJECTS += $(OBJDIR)/handle.o
@@ -230,6 +231,9 @@ $(OBJDIR)/replace_methods.o: ../../test/api/replace_methods.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/error.o: ../../test/api/error.c
+	@echo $(notdir $<)
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/report_errors.o: ../../test/api/report_errors.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/foreign_class.o: ../../test/api/foreign_class.c

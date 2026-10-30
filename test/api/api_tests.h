@@ -15,6 +15,7 @@
 #include "debug.h"
 #include "debugger.h"
 #include "replace_methods.h"
+#include "report_errors.h"
 #include "error.h"
 #include "get_variable.h"
 #include "foreign_class.h"

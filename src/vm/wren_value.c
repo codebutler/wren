@@ -174,6 +174,7 @@ ObjFiber* wrenNewFiber(WrenVM* vm, ObjClosure* closure)
   fiber->openUpvalues = NULL;
   fiber->caller = NULL;
   fiber->error = NULL_VAL;
+  fiber->reportsErrors = false;
   fiber->state = FIBER_OTHER;
   
   if (closure != NULL)

@@ -387,6 +387,9 @@ typedef struct sObjFiber
   // If the fiber failed because of a runtime error, this will contain the
   // error object. Otherwise, it will be null.
   Value error;
+
+  // Report an error that reaches this fiber as uncaught, then resume its caller.
+  bool reportsErrors;
   
   FiberState state;
 } ObjFiber;

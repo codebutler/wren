@@ -405,16 +405,13 @@ static void callForeign(WrenVM* vm, ObjFiber* fiber,
   vm->apiStack = NULL;
 }
 
-// Handles the current fiber having aborted because of an error.
-//
-// Walks the call chain of fibers, aborting each one until it hits a fiber that
-// handles the error. If none do, tells the VM to stop.
-// Whether a fiber in the call chain of [fiber] was run with "try" and will
-// catch an error.
+// Whether a try in [fiber]'s call chain catches the error before it reaches
+// a reporting fiber.
 static bool isErrorCaught(ObjFiber* fiber)
 {
   for (; fiber != NULL; fiber = fiber->caller)
   {
+    if (fiber->reportsErrors) return false;
     if (fiber->state == FIBER_TRY) return true;
   }
   return false;
@@ -449,6 +446,8 @@ static bool callErrorHook(WrenVM* vm)
   return resumed;
 }
 
+// Handles the current fiber having aborted because of an error.
+// Walks callers until a try catches it or a reporting fiber reports it.
 static void runtimeError(WrenVM* vm)
 {
   ASSERT(wrenHasError(vm->fiber), "Should only call this after an error.");
@@ -462,6 +461,24 @@ static void runtimeError(WrenVM* vm)
   {
     // Every fiber along the call chain gets aborted with the same error.
     current->error = error;
+
+    // Report this boundary's error without aborting the fiber that ran it.
+    // The boundary comes before FIBER_TRY: it may itself have been run by try.
+    if (current->reportsErrors)
+    {
+      wrenDebugPrintStackTrace(vm);
+      if (current->caller == NULL)
+      {
+        vm->fiber = NULL;
+        vm->apiStack = NULL;
+        return;
+      }
+      ObjFiber* caller = current->caller;
+      current->caller = NULL;
+      caller->stackTop[-1] = error;
+      vm->fiber = caller;
+      return;
+    }
 
     // If the caller ran this fiber using "try", give it the error and stop.
     if (current->state == FIBER_TRY)
@@ -1581,6 +1598,13 @@ void wrenSetLineHook(WrenVM* vm, WrenLineHookFn hook)
 void wrenSetErrorHook(WrenVM* vm, WrenErrorHookFn hook)
 {
   vm->errorHook = hook;
+}
+
+void wrenSetFiberReportsErrors(WrenVM* vm, int slot, bool reports)
+{
+  validateApiSlot(vm, slot);
+  ASSERT(IS_FIBER(vm->apiStack[slot]), "Slot must contain a fiber.");
+  AS_FIBER(vm->apiStack[slot])->reportsErrors = reports;
 }
 
 void wrenSetInterruptHook(WrenVM* vm, WrenInterruptFn hook, int interval)
