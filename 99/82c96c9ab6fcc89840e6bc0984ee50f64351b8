@@ -1,0 +1,47 @@
+src/vm/wren_vm.c
+  s_648d10412ee830::t_5e5a8adb188e5a 408-409
+  s_648d10412ee830::t_ba485c3db5afd8 449-450,476-479
+projects/xcode/wren_test.xcodeproj/project.pbxproj
+  s_648d10412ee830::t_e5df0f2c2dbcce 23,89-90,129-130,268
+  s_648d10412ee830::t_389b4af1f3e5d9 403
+src/include/wren.h
+  s_648d10412ee830::t_211b95e6d60448 687-689
+  s_648d10412ee830::t_ba485c3db5afd8 701-702,707-711
+  s_648d10412ee830::t_5ed94af08ecae1 684-686,700,703-704
+test/api/report_errors.c
+  s_648d10412ee830::t_5d2f084cfccf4f 63-82,91-94
+test/api/report_errors.wren
+  s_648d10412ee830::t_428ea404787d39 5,19,32,60,67,76-129
+projects/make.bsd/wren_test.make
+  s_648d10412ee830::t_62dc5f48cd92e7 274
+projects/make.mac/wren_test.make
+  s_648d10412ee830::t_414a31945b4218 282
+projects/make/wren_test.make
+  s_648d10412ee830::t_07dde6ebb488fe 274
+projects/vs2017/wren_test.vcxproj
+  s_648d10412ee830::t_edb19c010352c9 308
+projects/vs2017/wren_test.vcxproj.filters
+  s_648d10412ee830::t_dde1f7c56b4968 123
+projects/vs2019/wren_test.vcxproj
+  s_648d10412ee830::t_0e496737a7d022 308
+projects/vs2019/wren_test.vcxproj.filters
+  s_648d10412ee830::t_b6806ba64abf2e 123
+test/api/api_tests.h
+  s_648d10412ee830::t_1ff9006138fd11 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9982c96c9ab6fcc89840e6bc0984ee50f64351b8",
+  "prompts": {},
+  "sessions": {
+    "s_648d10412ee830": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18bc6-3b52-7752-8aba-1d03beb8d03a",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    }
+  }
+}
