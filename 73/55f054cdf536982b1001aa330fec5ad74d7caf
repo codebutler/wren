@@ -1,0 +1,56 @@
+src/vm/wren_vm.c
+  s_648d10412ee830::t_d034591128eda3 418,467-482,1603-1607
+  s_648d10412ee830::t_630ec04a6fa455 1608-1609
+projects/vs2017/wren_test.vcxproj
+  s_648d10412ee830::t_61d9bdd9315a50 264,285,308
+projects/vs2019/wren_test.vcxproj
+  s_648d10412ee830::t_61d9bdd9315a50 264,285,308
+projects/make.mac/wren_test.make
+  s_648d10412ee830::t_cbd4b5936b222a 131,236-238,282
+projects/make/wren_test.make
+  s_648d10412ee830::t_cbd4b5936b222a 123,228-230,274
+test/api/report_errors.h
+  s_648d10412ee830::t_d06d3423b722f0 1-3
+projects/xcode/wren_test.xcodeproj/project.pbxproj
+  s_648d10412ee830::t_d2dc4a95e52f3a 23,89-90,129-130,268,403
+test/api/report_errors.c
+  s_648d10412ee830::t_c64a7b5a27dfd0 24,35-36,50,67-68
+  s_648d10412ee830::t_764f1b03b49b33 107-108
+  s_648d10412ee830::t_d06d3423b722f0 1-23,25-34,37-49,51-62,74-89,91-106,109-110
+  s_648d10412ee830::t_e85d0bda9964a5 63-66,69-73,90
+src/vm/wren_value.h
+  s_648d10412ee830::t_d034591128eda3 390-392
+projects/make.bsd/wren_test.make
+  s_648d10412ee830::t_cbd4b5936b222a 123,228-230,274
+src/vm/wren_value.c
+  s_648d10412ee830::t_d034591128eda3 177
+test/api/api_tests.c
+  s_648d10412ee830::t_d06d3423b722f0 40-42
+test/api/api_tests.h
+  s_648d10412ee830::t_d06d3423b722f0 18,42
+src/include/wren.h
+  s_648d10412ee830::t_d034591128eda3 698-706
+test/api/report_errors.wren
+  s_648d10412ee830::t_3b4887e379bede 1-26,31-75
+  s_648d10412ee830::t_859b7be1ca7b78 27-30
+projects/vs2017/wren_test.vcxproj.filters
+  s_648d10412ee830::t_000018daab1eb8 27-29,84-86,123
+projects/vs2019/wren_test.vcxproj.filters
+  s_648d10412ee830::t_000018daab1eb8 27-29,84-86,123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7355f054cdf536982b1001aa330fec5ad74d7caf",
+  "prompts": {},
+  "sessions": {
+    "s_648d10412ee830": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18bc6-3b52-7752-8aba-1d03beb8d03a",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    }
+  }
+}
