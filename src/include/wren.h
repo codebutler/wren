@@ -681,11 +681,12 @@ WREN_API const char* wrenGetInstanceField(WrenVM* vm, int slot, int index,
 WREN_API bool wrenGetMapEntry(WrenVM* vm, int mapSlot, int index, int keySlot,
                               int valueSlot);
 
-// A function the VM calls when a runtime error is about to end the running
-// fiber and no fiber run with `try` will catch it: before anything unwinds,
-// so the stack inspection functions still describe the failing call, with
-// the innermost frame at the instruction that failed. [message] is the error
-// if it is a string, else "[error object]".
+// A function the VM calls before an uncaught runtime error unwinds. A
+// reporting fiber makes an error uncaught at its boundary even when an outer
+// caller used `try` (see [wrenSetFiberReportsErrors]). The hook runs before
+// anything unwinds, so stack inspection describes the failing call, with the
+// innermost frame at the instruction that failed. [message] is the error if
+// it is a string, else "[error object]".
 //
 // The hook has the rules of a [WrenLineHookFn]. When it returns, the error
 // unwinds as usual, unless the hook moved execution with [wrenSetFrameLine]:
@@ -696,12 +697,18 @@ typedef void (*WrenErrorHookFn)(WrenVM* vm, const char* message);
 WREN_API void wrenSetErrorHook(WrenVM* vm, WrenErrorHookFn hook);
 
 // Marks the fiber in [slot] as reporting its errors (or clears the mark).
-// An error that reaches a reporting fiber without being caught by a fiber
-// it ran with `try` is handled as uncaught: the error hook runs even if a
-// `try` sits further out, and errorFn receives the error and its stack trace.
+// [slot] must hold a fiber.
+// An error that reaches a reporting fiber without being caught by a `try`
+// inside it is handled as uncaught: the error hook runs even if a
+// `try` sits further out, and errorFn receives the error and the failing
+// fiber's stack trace.
 // Only the reporting fiber and the fibers it called end; its caller resumes,
 // and the `try` or `call` that ran it returns the error. A reporting fiber
-// without a caller behaves as uncaught.
+// without a caller behaves as uncaught. If its caller continues,
+// wrenInterpret or wrenCall returns WREN_RESULT_SUCCESS; errorFn is the only
+// signal that the error was reported. An interrupt hook's wrenAbortFiber is
+// reported by a marked fiber too. If the embedder needs to end the whole run,
+// it must abort again when the caller continues (which can report again).
 WREN_API void wrenSetFiberReportsErrors(WrenVM* vm, int slot, bool reports);
 
 typedef enum

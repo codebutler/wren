@@ -60,6 +60,26 @@ static void mark(WrenVM* vm)
   wrenSetSlotNull(vm, 0);
 }
 
+static void unmark(WrenVM* vm)
+{
+  wrenSetFiberReportsErrors(vm, 1, false);
+  wrenSetSlotNull(vm, 0);
+}
+
+static void interruptHook(WrenVM* vm)
+{
+  wrenSetInterruptHook(vm, NULL, 1);
+  wrenEnsureSlots(vm, 1);
+  wrenSetSlotString(vm, 0, "interrupted");
+  wrenAbortFiber(vm, 0);
+}
+
+static void interruptOnce(WrenVM* vm)
+{
+  wrenSetInterruptHook(vm, interruptHook, 1000);
+  wrenSetSlotNull(vm, 0);
+}
+
 static WrenForeignMethodFn bindInner(WrenVM* vm, const char* module,
                                      const char* className, bool isStatic,
                                      const char* signature)
@@ -68,6 +88,10 @@ static WrenForeignMethodFn bindInner(WrenVM* vm, const char* module,
   (void)module;
   if (isStatic && strcmp(className, "Mark") == 0 &&
       strcmp(signature, "mark(_)") == 0) return mark;
+  if (isStatic && strcmp(className, "Mark") == 0 &&
+      strcmp(signature, "unmark(_)") == 0) return unmark;
+  if (isStatic && strcmp(className, "Mark") == 0 &&
+      strcmp(signature, "interruptOnce()") == 0) return interruptOnce;
   return NULL;
 }
 
@@ -105,6 +129,5 @@ static void run(WrenVM* vm)
 WrenForeignMethodFn reportErrorsBindMethod(const char* signature)
 {
   if (strcmp(signature, "static Reporter.run(_,_)") == 0) return run;
-  if (strcmp(signature, "static Mark.mark(_)") == 0) return mark;
   return NULL;
 }
