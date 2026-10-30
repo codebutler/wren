@@ -20,6 +20,7 @@
 		7CCD7163EDF01255A3B6BFA3 /* api_tests.c in Sources */ = {isa = PBXBuildFile; fileRef = 21B810EB49F2C99D318E572B /* api_tests.c */; };
 		8F510F77A173C5697A74FDB7 /* reset_stack_after_foreign_construct.c in Sources */ = {isa = PBXBuildFile; fileRef = 310165BFD4689371EB9E4BFF /* reset_stack_after_foreign_construct.c */; };
 		A9B950DFD94B1FD1B4585F1F /* error.c in Sources */ = {isa = PBXBuildFile; fileRef = F961FEA79C5025592B7604E7 /* error.c */; };
+		AC2175000000000000000001 /* report_errors.c in Sources */ = {isa = PBXBuildFile; fileRef = AC2175000000000000000002 /* report_errors.c */; };
 		AA2E14D19E2D5E4323187311 /* call_calls_foreign.c in Sources */ = {isa = PBXBuildFile; fileRef = 93074179D71B12ABCAEC97B9 /* call_calls_foreign.c */; };
 		BD0CC4E181C21B533630C321 /* reset_stack_after_call_abort.c in Sources */ = {isa = PBXBuildFile; fileRef = B1B12E89FA506CBB1D7C24C9 /* reset_stack_after_call_abort.c */; };
 		D43547E14557E8D3FB1E9621 /* benchmark.c in Sources */ = {isa = PBXBuildFile; fileRef = 50338489786E3D3B6009CAC9 /* benchmark.c */; };
@@ -85,6 +86,8 @@
 		E97890032D8C6135215DE643 /* call_calls_foreign.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = call_calls_foreign.h; path = ../../test/api/call_calls_foreign.h; sourceTree = "<group>"; };
 		F6806111996E87C328946751 /* error.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = error.h; path = ../../test/api/error.h; sourceTree = "<group>"; };
 		F961FEA79C5025592B7604E7 /* error.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = error.c; path = ../../test/api/error.c; sourceTree = "<group>"; };
+		AC2175000000000000000002 /* report_errors.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = report_errors.c; path = ../../test/api/report_errors.c; sourceTree = "<group>"; };
+		AC2175000000000000000003 /* report_errors.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = report_errors.h; path = ../../test/api/report_errors.h; sourceTree = "<group>"; };
 		F9C7671D92144CCFC05B4D5D /* call_wren_call_root.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = call_wren_call_root.c; path = ../../test/api/call_wren_call_root.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -123,6 +126,8 @@
 				13133647AB601BF9D9A71C87 /* call_wren_call_root.h */,
 				F961FEA79C5025592B7604E7 /* error.c */,
 				F6806111996E87C328946751 /* error.h */,
+				AC2175000000000000000002 /* report_errors.c */,
+				AC2175000000000000000003 /* report_errors.h */,
 				8A4FC471BC490F2336284AB1 /* foreign_class.c */,
 				17B63BDB49AF868DC38EC21B /* foreign_class.h */,
 				1270B31D5FD3A94FD5F2A95D /* get_variable.c */,
@@ -260,6 +265,7 @@
 				AA2E14D19E2D5E4323187311 /* call_calls_foreign.c in Sources */,
 				DA534BB5CB4AB9A7374E39F5 /* call_wren_call_root.c in Sources */,
 				A9B950DFD94B1FD1B4585F1F /* error.c in Sources */,
+				AC2175000000000000000001 /* report_errors.c in Sources */,
 				181D16496F82893B2190A489 /* foreign_class.c in Sources */,
 				E21864B54F40732750D362F5 /* get_variable.c in Sources */,
 				4D8AE463A8CC37D57C2682A3 /* handle.c in Sources */,

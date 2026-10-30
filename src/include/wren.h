@@ -695,6 +695,15 @@ typedef void (*WrenErrorHookFn)(WrenVM* vm, const char* message);
 // Sets the error hook, or disables it when [hook] is NULL.
 WREN_API void wrenSetErrorHook(WrenVM* vm, WrenErrorHookFn hook);
 
+// Marks the fiber in [slot] as reporting its errors (or clears the mark).
+// An error that reaches a reporting fiber without being caught by a fiber
+// it ran with `try` is handled as uncaught: the error hook runs even if a
+// `try` sits further out, and errorFn receives the error and its stack trace.
+// Only the reporting fiber and the fibers it called end; its caller resumes,
+// and the `try` or `call` that ran it returns the error. A reporting fiber
+// without a caller behaves as uncaught.
+WREN_API void wrenSetFiberReportsErrors(WrenVM* vm, int slot, bool reports);
+
 typedef enum
 {
   // Execution continues at the start of the line.

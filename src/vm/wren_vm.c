@@ -415,6 +415,7 @@ static bool isErrorCaught(ObjFiber* fiber)
 {
   for (; fiber != NULL; fiber = fiber->caller)
   {
+    if (fiber->reportsErrors) return false;
     if (fiber->state == FIBER_TRY) return true;
   }
   return false;
@@ -462,6 +463,22 @@ static void runtimeError(WrenVM* vm)
   {
     // Every fiber along the call chain gets aborted with the same error.
     current->error = error;
+
+    // Report this boundary's error without aborting the fiber that ran it.
+    // The boundary comes before FIBER_TRY: it may itself have been run by try.
+    if (current->reportsErrors)
+    {
+      wrenDebugPrintStackTrace(vm);
+      if (current->caller == NULL)
+      {
+        vm->fiber = NULL;
+        vm->apiStack = NULL;
+        return;
+      }
+      current->caller->stackTop[-1] = error;
+      vm->fiber = current->caller;
+      return;
+    }
 
     // If the caller ran this fiber using "try", give it the error and stop.
     if (current->state == FIBER_TRY)
@@ -1581,6 +1598,13 @@ void wrenSetLineHook(WrenVM* vm, WrenLineHookFn hook)
 void wrenSetErrorHook(WrenVM* vm, WrenErrorHookFn hook)
 {
   vm->errorHook = hook;
+}
+
+void wrenSetFiberReportsErrors(WrenVM* vm, int slot, bool reports)
+{
+  validateApiSlot(vm, slot);
+  ASSERT(IS_FIBER(vm->apiStack[slot]), "Slot must contain a fiber.");
+  AS_FIBER(vm->apiStack[slot])->reportsErrors = reports;
 }
 
 void wrenSetInterruptHook(WrenVM* vm, WrenInterruptFn hook, int interval)
