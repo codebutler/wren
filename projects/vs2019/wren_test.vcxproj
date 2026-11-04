@@ -263,6 +263,7 @@
     <ClInclude Include="..\..\test\api\error.h" />
     <ClInclude Include="..\..\test\api\report_errors.h" />
     <ClInclude Include="..\..\test\api\foreign_class.h" />
+    <ClInclude Include="..\..\test\api\foreign_grows_stack.h" />
     <ClInclude Include="..\..\test\api\get_variable.h" />
     <ClInclude Include="..\..\test\api\handle.h" />
     <ClInclude Include="..\..\test\api\lists.h" />
@@ -284,6 +285,7 @@
     <ClCompile Include="..\..\test\api\error.c" />
     <ClCompile Include="..\..\test\api\report_errors.c" />
     <ClCompile Include="..\..\test\api\foreign_class.c" />
+    <ClCompile Include="..\..\test\api\foreign_grows_stack.c" />
     <ClCompile Include="..\..\test\api\get_variable.c" />
     <ClCompile Include="..\..\test\api\handle.c" />
     <ClCompile Include="..\..\test\api\lists.c" />

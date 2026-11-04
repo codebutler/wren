@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		134AABB542DC7AA71DE9B9F5 /* slots.c in Sources */ = {isa = PBXBuildFile; fileRef = 33526D1DD64093CF6566735D /* slots.c */; };
 		181D16496F82893B2190A489 /* foreign_class.c in Sources */ = {isa = PBXBuildFile; fileRef = 8A4FC471BC490F2336284AB1 /* foreign_class.c */; };
+		5A1C0F3E8D2B47A69E3D7C11 /* foreign_grows_stack.c in Sources */ = {isa = PBXBuildFile; fileRef = 6B2D104F9E3C58B7AF4E8D22 /* foreign_grows_stack.c */; };
 		1C5491694BE6605B26F39FA9 /* lists.c in Sources */ = {isa = PBXBuildFile; fileRef = 41058591E3F3AC4373198BD1 /* lists.c */; };
 		29C70EE3850862555862AD23 /* new_vm.c in Sources */ = {isa = PBXBuildFile; fileRef = C22EBF6BD9415A9DC95D55AB /* new_vm.c */; };
 		31D07E222B367F941ED1DC62 /* test.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B2F762A1E7AFF5C394BCC6A /* test.c */; };
@@ -72,6 +73,8 @@
 		7B2F762A1E7AFF5C394BCC6A /* test.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = test.c; path = ../../test/test.c; sourceTree = "<group>"; };
 		7C8B0753C52A4585E855FD93 /* reset_stack_after_call_abort.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = reset_stack_after_call_abort.h; path = ../../test/api/reset_stack_after_call_abort.h; sourceTree = "<group>"; };
 		8A4FC471BC490F2336284AB1 /* foreign_class.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = foreign_class.c; path = ../../test/api/foreign_class.c; sourceTree = "<group>"; };
+		6B2D104F9E3C58B7AF4E8D22 /* foreign_grows_stack.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = foreign_grows_stack.c; path = ../../test/api/foreign_grows_stack.c; sourceTree = "<group>"; };
+		7C3E21509F4D69C8B05F9E33 /* foreign_grows_stack.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = foreign_grows_stack.h; path = ../../test/api/foreign_grows_stack.h; sourceTree = "<group>"; };
 		93074179D71B12ABCAEC97B9 /* call_calls_foreign.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = call_calls_foreign.c; path = ../../test/api/call_calls_foreign.c; sourceTree = "<group>"; };
 		9C375BF5B349F727A365F235 /* handle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = handle.h; path = ../../test/api/handle.h; sourceTree = "<group>"; };
 		A415E4D5A786B70728F35B15 /* call.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = call.h; path = ../../test/api/call.h; sourceTree = "<group>"; };
@@ -130,6 +133,8 @@
 				EF18967E024FCEE61A484B1B /* report_errors.h */,
 				8A4FC471BC490F2336284AB1 /* foreign_class.c */,
 				17B63BDB49AF868DC38EC21B /* foreign_class.h */,
+				6B2D104F9E3C58B7AF4E8D22 /* foreign_grows_stack.c */,
+				7C3E21509F4D69C8B05F9E33 /* foreign_grows_stack.h */,
 				1270B31D5FD3A94FD5F2A95D /* get_variable.c */,
 				7428A1E7C18B981937AA9827 /* get_variable.h */,
 				069BFCEB1DAE981D0DCA932B /* handle.c */,
@@ -267,6 +272,7 @@
 				A9B950DFD94B1FD1B4585F1F /* error.c in Sources */,
 				88E7D019DCC44E8164E2F738 /* report_errors.c in Sources */,
 				181D16496F82893B2190A489 /* foreign_class.c in Sources */,
+				5A1C0F3E8D2B47A69E3D7C11 /* foreign_grows_stack.c in Sources */,
 				E21864B54F40732750D362F5 /* get_variable.c in Sources */,
 				4D8AE463A8CC37D57C2682A3 /* handle.c in Sources */,
 				1C5491694BE6605B26F39FA9 /* lists.c in Sources */,

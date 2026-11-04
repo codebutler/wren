@@ -46,6 +46,9 @@ WrenForeignMethodFn APITest_bindForeignMethod(
   method = foreignClassBindMethod(fullName);
   if (method != NULL) return method;
 
+  method = foreignGrowsStackBindMethod(fullName);
+  if (method != NULL) return method;
+
   method = handleBindMethod(fullName);
   if (method != NULL) return method;
 
@@ -83,6 +86,9 @@ WrenForeignClassMethods APITest_bindForeignClass(
   if (strncmp(module, "./test/api", 7) != 0) return methods;
 
   foreignClassBindClass(className, &methods);
+  if (methods.allocate != NULL) return methods;
+
+  foreignGrowsStackBindClass(className, &methods);
   if (methods.allocate != NULL) return methods;
 
   resetStackAfterForeignConstructBindClass(className, &methods);

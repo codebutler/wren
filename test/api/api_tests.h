@@ -19,6 +19,7 @@
 #include "error.h"
 #include "get_variable.h"
 #include "foreign_class.h"
+#include "foreign_grows_stack.h"
 #include "handle.h"
 #include "lists.h"
 #include "maps.h"
