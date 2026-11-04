@@ -322,6 +322,10 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
           callForeign(vm, fiber, method->as.foreign, numArgs);
           if (wrenHasError(fiber)) RUNTIME_ERROR();
 
+          // The foreign method may have grown the stack (wrenEnsureSlots),
+          // which moves it.
+          LOAD_FRAME();
+
           // The foreign method may have installed or removed the line hook.
           if (HOOK_CHANGED()) SWITCH_LOOP();
           break;
@@ -529,8 +533,13 @@ static int WREN_INTERPRETER_NAME(WrenVM* vm, register ObjFiber* fiber)
 
     CASE_CODE(FOREIGN_CONSTRUCT):
       ASSERT(IS_CLASS(stackStart[0]), "'this' should be a class.");
+      STORE_FRAME();
       createForeign(vm, fiber, stackStart);
       if (wrenHasError(fiber)) RUNTIME_ERROR();
+
+      // The allocator may have grown the stack (wrenEnsureSlots), which
+      // moves it.
+      LOAD_FRAME();
       DISPATCH();
 
     CASE_CODE(CLOSURE):

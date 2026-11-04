@@ -122,6 +122,7 @@ OBJECTS += $(OBJDIR)/replace_methods.o
 OBJECTS += $(OBJDIR)/error.o
 OBJECTS += $(OBJDIR)/report_errors.o
 OBJECTS += $(OBJDIR)/foreign_class.o
+OBJECTS += $(OBJDIR)/foreign_grows_stack.o
 OBJECTS += $(OBJDIR)/get_variable.o
 OBJECTS += $(OBJDIR)/handle.o
 OBJECTS += $(OBJDIR)/lists.o
@@ -229,6 +230,9 @@ $(OBJDIR)/report_errors.o: ../../test/api/report_errors.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/foreign_class.o: ../../test/api/foreign_class.c
+	@echo $(notdir $<)
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/foreign_grows_stack.o: ../../test/api/foreign_grows_stack.c
 	@echo $(notdir $<)
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/get_variable.o: ../../test/api/get_variable.c

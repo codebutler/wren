@@ -739,9 +739,14 @@ static void createForeign(WrenVM* vm, ObjFiber* fiber, Value* stack)
   // Pass the constructor arguments to the allocator as well.
   ASSERT(vm->apiStack == NULL, "Cannot already be in foreign call.");
   vm->apiStack = stack;
+  int stackTop = (int)(fiber->stackTop - fiber->stack);
 
   method->as.foreign(vm);
 
+  // The allocator may have asked for more slots, which raises the top of the
+  // stack and may move it. The arguments stay on the stack for the
+  // initializer, so restore the top by offset, as the hooks do.
+  fiber->stackTop = fiber->stack + stackTop;
   vm->apiStack = NULL;
 }
 
