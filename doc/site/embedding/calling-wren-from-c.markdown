@@ -189,8 +189,14 @@ reading functions. If you don't need the return value, you can ignore it.
 An embedder can associate an opaque pointer with a `Fn` in a slot:
 
 ```c
-wrenSetFnUserData(vm, slot, context);
+if (!wrenSetFnUserData(vm, slot, context)) {
+  // The slot did not contain a function.
+}
 ```
+
+The setter returns false for any non-function value without modifying it.
+It checks the VM value kind, so a user class named `Fn` cannot impersonate a
+function. As with other slot APIs, the slot index must be valid.
 
 While Wren is running, `wrenGetCurrentFnUserData(vm)` returns the innermost
 non-null association on the active call stack, including caller fibers. An

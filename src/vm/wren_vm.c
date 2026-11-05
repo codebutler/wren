@@ -1585,11 +1585,12 @@ void wrenSetUserData(WrenVM* vm, void* userData)
 	vm->config.userData = userData;
 }
 
-void wrenSetFnUserData(WrenVM* vm, int slot, void* userData)
+bool wrenSetFnUserData(WrenVM* vm, int slot, void* userData)
 {
   validateApiSlot(vm, slot);
-  ASSERT(IS_CLOSURE(vm->apiStack[slot]), "Slot must contain a function.");
+  if (!IS_CLOSURE(vm->apiStack[slot])) return false;
   AS_CLOSURE(vm->apiStack[slot])->userData = userData;
+  return true;
 }
 
 void* wrenGetCurrentFnUserData(WrenVM* vm)
