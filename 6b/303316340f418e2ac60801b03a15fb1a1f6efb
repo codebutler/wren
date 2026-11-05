@@ -1,0 +1,39 @@
+doc/site/embedding/calling-wren-from-c.markdown
+  s_54a16b1fabe656::t_47419ed735dc86 187-212
+src/include/wren.h
+  s_7e9b8c138454b8::t_4eba64936fa9ed 569-581
+src/vm/wren_value.c
+  s_7e9b8c138454b8::t_2a2a4a07f1099d 143
+src/vm/wren_value.h
+  s_7e9b8c138454b8::t_edbd1269b979e7 316-318
+src/vm/wren_vm.c
+  s_7e9b8c138454b8::t_d6b39d4e338e47 1588-1607
+test/api/function_context.wren
+  s_54a16b1fabe656::t_ec52e26fabccae 1-116
+test/api/user_data.c
+  s_54a16b1fabe656::t_9071d4946f3c1e 2-3,61-133,137-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b303316340f418e2ac60801b03a15fb1a1f6efb",
+  "prompts": {},
+  "sessions": {
+    "s_54a16b1fabe656": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1abfc-ba76-79b1-9d63-ceb396331ce2",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    },
+    "s_7e9b8c138454b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1ac39-6252-7f11-9eaa-c21e627b5765",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    }
+  }
+}
