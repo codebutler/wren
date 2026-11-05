@@ -114,3 +114,26 @@ System.print(transferLog) // expect: [14, 0, 14, 0]
 // Interrupting the body reports the original active context and user line.
 var interruptedSource = "class Context {\nforeign static tag(fn, id)\nforeign static interrupt()\n}\nvar fn = Fn.new {\nContext.interrupt()\nwhile (true) {}\n}\nContext.tag(fn, 15)\nfn.call()\n"
 System.print(FunctionContext.check(interruptedSource)) // expect: 2 errors=1 hook=15 line=7 after=0
+
+// Validate structural closure identity, never a forgeable class name.
+var spoof = Fn.new {
+  class Fn { construct new() {} }
+  var instance = Fn.new()
+  System.print(instance.type.name) // expect: Fn
+  System.print(FunctionContext.tag(instance, 99)) // expect: false
+  System.print(FunctionContext.tag(Fn, 99)) // expect: false
+}
+spoof.call()
+for (value in [null, true, 42, "Fn", [], {}, Fiber.new {}]) {
+  System.print(FunctionContext.tag(value, 99)) // expect: false
+  // expect: false
+  // expect: false
+  // expect: false
+  // expect: false
+  // expect: false
+  // expect: false
+}
+System.print(FunctionContext.tag(read, 123)) // expect: true
+System.print(read.call()) // expect: 123
+System.print(FunctionContext.tag(read, 0)) // expect: true
+System.print(read.call()) // expect: 0

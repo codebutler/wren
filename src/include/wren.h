@@ -569,7 +569,9 @@ WREN_API void wrenSetUserData(WrenVM* vm, void* userData);
 // Associates opaque embedder data with the Fn in [slot]. The VM neither owns
 // nor traces this pointer; the embedder must keep it valid while it may be read.
 // New functions have NULL data. Setting NULL removes the association.
-WREN_API void wrenSetFnUserData(WrenVM* vm, int slot, void* userData);
+// Returns true on success, or false without changing anything if the slot
+// does not contain a function. The slot must still be a valid API slot.
+WREN_API bool wrenSetFnUserData(WrenVM* vm, int slot, void* userData);
 
 // Returns the innermost non-NULL Fn user data on the current call stack,
 // including caller fibers, or NULL when none is present or Wren is not running.

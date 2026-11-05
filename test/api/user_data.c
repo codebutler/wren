@@ -60,8 +60,9 @@ static void test(WrenVM* vm)
 
 static void tagFn(WrenVM* vm)
 {
-  wrenSetFnUserData(vm, 1, (void*)(intptr_t)wrenGetSlotDouble(vm, 2));
-  wrenSetSlotNull(vm, 0);
+  bool tagged = wrenSetFnUserData(vm, 1,
+      (void*)(intptr_t)wrenGetSlotDouble(vm, 2));
+  wrenSetSlotBool(vm, 0, tagged);
 }
 
 static void currentFn(WrenVM* vm)
