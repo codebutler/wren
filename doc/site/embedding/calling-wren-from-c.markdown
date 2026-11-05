@@ -184,6 +184,32 @@ When `wrenCall()` returns, it leaves the slot array in place. In slot zero, you
 can find the method's return value, which you can access using any of the slot
 reading functions. If you don't need the return value, you can ignore it.
 
+## Function Context
+
+An embedder can associate an opaque pointer with a `Fn` in a slot:
+
+```c
+wrenSetFnUserData(vm, slot, context);
+```
+
+While Wren is running, `wrenGetCurrentFnUserData(vm)` returns the innermost
+non-null association on the active call stack, including caller fibers. An
+untagged function inherits the nearest tagged caller's context. A foreign
+method, debugger hook, or interrupt hook can use this to identify the callback
+that called it without adding a wrapper fiber or intercepting errors.
+
+The association belongs to the individual closure, not its compiled function.
+New closures have null data; setting null removes an association. The VM does
+not own or trace the pointer. Keep any referenced data alive while the VM can
+read it, or use an embedder-managed identifier. The association does not keep
+its function alive.
+
+Returns, errors, yields, and transfers follow the VM's existing frame and fiber
+chain. In particular, a resumed fiber sees its current caller, not the caller
+from its first invocation. A transfer does not inherit the transfer site's
+context unless it is also in the receiving fiber's caller chain. When no
+association is active, or Wren is not running, the getter returns null.
+
 This is how you drive Wren from C, but how do you put control in Wren's hands?
 For that, you'll need the next section...
 
