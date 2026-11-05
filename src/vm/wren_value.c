@@ -140,6 +140,7 @@ ObjClosure* wrenNewClosure(WrenVM* vm, ObjFn* fn)
   initObj(vm, &closure->obj, OBJ_CLOSURE, vm->fnClass);
 
   closure->fn = fn;
+  closure->userData = NULL;
 
   // Clear the upvalue array. We need to do this in case a GC is triggered
   // after the closure is created but before the upvalue array is populated.

@@ -313,6 +313,9 @@ typedef struct
   // The function that this closure is an instance of.
   ObjFn* fn;
 
+  // Opaque embedder context; not a Wren value or a GC root.
+  void* userData;
+
   // The upvalues this function has closed over.
   ObjUpvalue* upvalues[FLEXIBLE_ARRAY];
 } ObjClosure;

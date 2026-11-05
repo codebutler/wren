@@ -566,6 +566,19 @@ WREN_API void* wrenGetUserData(WrenVM* vm);
 // Sets user data associated with the WrenVM.
 WREN_API void wrenSetUserData(WrenVM* vm, void* userData);
 
+// Associates opaque embedder data with the Fn in [slot]. The VM neither owns
+// nor traces this pointer; the embedder must keep it valid while it may be read.
+// New functions have NULL data. Setting NULL removes the association.
+WREN_API void wrenSetFnUserData(WrenVM* vm, int slot, void* userData);
+
+// Returns the innermost non-NULL Fn user data on the current call stack,
+// including caller fibers, or NULL when none is present or Wren is not running.
+// Untagged functions inherit the nearest tagged caller's data. Calls, returns,
+// yields, transfers and caught errors use the VM's existing frame/fiber chain:
+// this operation does not create a fiber, catch an error or change its trace.
+// Valid from foreign methods and debugger/interrupt hooks. No allocation occurs.
+WREN_API void* wrenGetCurrentFnUserData(WrenVM* vm);
+
 // Makes the optional random module's `Random.new()` deterministic in [vm].
 //
 // From now on, each `Random.new()` with no seed seeds itself from [seed] and

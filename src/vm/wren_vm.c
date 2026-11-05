@@ -1585,6 +1585,26 @@ void wrenSetUserData(WrenVM* vm, void* userData)
 	vm->config.userData = userData;
 }
 
+void wrenSetFnUserData(WrenVM* vm, int slot, void* userData)
+{
+  validateApiSlot(vm, slot);
+  ASSERT(IS_CLOSURE(vm->apiStack[slot]), "Slot must contain a function.");
+  AS_CLOSURE(vm->apiStack[slot])->userData = userData;
+}
+
+void* wrenGetCurrentFnUserData(WrenVM* vm)
+{
+  for (ObjFiber* fiber = vm->fiber; fiber != NULL; fiber = fiber->caller)
+  {
+    for (int i = fiber->numFrames - 1; i >= 0; i--)
+    {
+      void* userData = fiber->frames[i].closure->userData;
+      if (userData != NULL) return userData;
+    }
+  }
+  return NULL;
+}
+
 void wrenSetRandomSeed(WrenVM* vm, unsigned int seed)
 {
   vm->hasRandomSeed = true;
