@@ -1,0 +1,27 @@
+doc/site/embedding/calling-wren-from-c.markdown
+  s_54a16b1fabe656::t_a79b28012860d3 192-194,197-200
+src/include/wren.h
+  s_54a16b1fabe656::t_770c667b3963ab 572-574
+src/vm/wren_vm.c
+  s_54a16b1fabe656::t_17dffceadc899f 1588,1591,1593
+test/api/function_context.wren
+  s_54a16b1fabe656::t_72d41bef5a36ca 117-139
+test/api/user_data.c
+  s_54a16b1fabe656::t_3b186c9de53716 63-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8144d123572ba36ec0418668bb84ff0cd74f51c8",
+  "prompts": {},
+  "sessions": {
+    "s_54a16b1fabe656": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1abfc-ba76-79b1-9d63-ceb396331ce2",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Eric Butler <eric@codebutler.com>"
+    }
+  }
+}
