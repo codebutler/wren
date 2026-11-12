@@ -877,6 +877,24 @@ DEF_PRIMITIVE(object_same)
   RETURN_BOOL(wrenValuesEqual(args[1], args[2]));
 }
 
+// A number that agrees with same(_,_): two objects that are the same give
+// the same number. An object compared by reference gives its own number for
+// as long as it lives (its address); a value type gives a hash of its value,
+// which other values may share.
+DEF_PRIMITIVE(object_hash)
+{
+  Value value = args[1];
+  if (IS_OBJ(value))
+  {
+    Obj* obj = AS_OBJ(value);
+    if (obj->type != OBJ_STRING && obj->type != OBJ_RANGE)
+    {
+      RETURN_NUM((double)(uintptr_t)obj);
+    }
+  }
+  RETURN_NUM((double)wrenHashValue(value));
+}
+
 DEF_PRIMITIVE(object_not)
 {
   RETURN_VAL(FALSE_VAL);
@@ -1301,6 +1319,7 @@ void wrenInitializeCore(WrenVM* vm)
   wrenBindSuperclass(vm, objectMetaclass, vm->classClass);
 
   PRIMITIVE(objectMetaclass, "same(_,_)", object_same);
+  PRIMITIVE(objectMetaclass, "hash(_)", object_hash);
 
   // The core class diagram ends up looking like this, where single lines point
   // to a class's superclass, and double lines point to its metaclass:
