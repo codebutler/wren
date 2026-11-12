@@ -1,6 +1,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "wren.h"
 #include "wren_common.h"
@@ -89,6 +90,19 @@ WrenVM* wrenNewVM(WrenConfiguration* config)
   }
 
   // TODO: Should we allocate and free this during a GC?
+  // Object.hash's key: what the VM cannot predict about this run (the time,
+  // the processor clock, where the VM landed), mixed.
+  {
+    uint64_t seed = (uint64_t)time(NULL) ^ ((uint64_t)clock() << 21) ^
+                    (uint64_t)(uintptr_t)vm;
+    seed ^= seed >> 33;
+    seed *= 0xff51afd7ed558ccdULL;
+    seed ^= seed >> 33;
+    seed *= 0xc4ceb9fe1a85ec53ULL;
+    seed ^= seed >> 33;
+    vm->hashKey = seed;
+  }
+
   vm->grayCount = 0;
   // TODO: Tune this.
   vm->grayCapacity = 4;

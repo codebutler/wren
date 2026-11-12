@@ -30,6 +30,10 @@ struct WrenHandle
 
 struct WrenVM
 {
+  // The secret Object.hash mixes an object's address with, so a script
+  // gets a number unique to the object without learning where it lives.
+  uint64_t hashKey;
+
   ObjClass* boolClass;
   ObjClass* classClass;
   ObjClass* fiberClass;
