@@ -138,7 +138,7 @@ It is a runtime error if the index is not an integer or is out of bounds.
 
 ### **sort**(), **sort**(comparer)
 
-Sorts the elements of a list in-place; altering the list. The default sort is implemented using the quicksort algorithm.
+Sorts the elements of a list in-place; altering the list. The sort is a merge sort: it takes O(n log n) comparisons whatever the order of the input, and it is stable, so elements the comparison does not order keep the order they had.
 
 <pre class="snippet">
 var list = [4, 1, 3, 2].sort()

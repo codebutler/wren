@@ -433,6 +433,13 @@ static uint32_t hashObject(Obj* object)
 
 // Generates a hash code for [value], which must be one of the built-in
 // immutable types: null, bool, class, num, range, or string.
+static uint32_t hashValue(Value value);
+
+uint32_t wrenHashValue(Value value)
+{
+  return hashValue(value);
+}
+
 static uint32_t hashValue(Value value)
 {
   // TODO: We'll probably want to randomize this at some point.

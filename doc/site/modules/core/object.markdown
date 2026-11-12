@@ -2,6 +2,21 @@
 
 ## Static Methods
 
+### **hash**(obj)
+
+Returns a number that agrees with `same`: if `Object.same(a, b)` is true,
+`Object.hash(a) == Object.hash(b)`. An object compared by reference has a
+number of its own for as long as it lives, so it can stand for the object
+as a map key. A value type (a number, string, range, boolean or null) gives
+a hash of its value, which other values may share, so check `same` on a
+match.
+
+<pre class="snippet">
+var a = [1]
+System.print(Object.hash(a) == Object.hash(a)) //> true
+System.print(Object.hash(a) == Object.hash([1])) //> false
+</pre>
+
 ### **same**(obj1, obj2)
 
 Returns `true` if *obj1* and *obj2* are the same. For [value

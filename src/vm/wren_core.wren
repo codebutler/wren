@@ -333,29 +333,53 @@ class List is Sequence {
     return this
   }
 
+  // A bottom-up merge sort: O(n log n) whatever the input (a quicksort
+  // that pivots on the last element went quadratic on a sorted list), and
+  // stable: elements the comparer does not order keep their order.
   quicksort_(low, high, comparer) {
-    if (low < high) {
-      var p = partition_(low, high, comparer)
-      quicksort_(low, p - 1, comparer)
-      quicksort_(p + 1, high, comparer)
-    }
-  }
-
-  partition_(low, high, comparer) {
-    var p = this[high]
-    var i = low - 1
-    for (j in low..(high-1)) {
-      if (comparer.call(this[j], p)) {  
-        i = i + 1
-        var t = this[i]
-        this[i] = this[j]
-        this[j] = t
+    var n = high - low + 1
+    if (n < 2) return
+    var from = this[low..high]
+    var to = List.filled(n, null)
+    var width = 1
+    while (width < n) {
+      var start = 0
+      while (start < n) {
+        var middle = start + width
+        if (middle > n) middle = n
+        var end = start + width * 2
+        if (end > n) end = n
+        var left = start
+        var right = middle
+        var at = start
+        while (left < middle && right < end) {
+          if (comparer.call(from[right], from[left])) {
+            to[at] = from[right]
+            right = right + 1
+          } else {
+            to[at] = from[left]
+            left = left + 1
+          }
+          at = at + 1
+        }
+        while (left < middle) {
+          to[at] = from[left]
+          left = left + 1
+          at = at + 1
+        }
+        while (right < end) {
+          to[at] = from[right]
+          right = right + 1
+          at = at + 1
+        }
+        start = end
       }
+      var swap = from
+      from = to
+      to = swap
+      width = width * 2
     }
-    var t = this[i+1]
-    this[i+1] = this[high]
-    this[high] = t
-    return i+1
+    for (i in 0...n) this[low + i] = from[i]
   }
 
   toString { "[%(join(", "))]" }
