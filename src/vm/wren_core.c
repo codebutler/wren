@@ -879,8 +879,10 @@ DEF_PRIMITIVE(object_same)
 
 // A number that agrees with same(_,_): two objects that are the same give
 // the same number. An object compared by reference gives its own number for
-// as long as it lives (its address); a value type gives a hash of its value,
-// which other values may share.
+// as long as it lives: its address, xored with the VM's secret key and
+// multiplied by an odd constant modulo 2^53 (a bijection, so distinct live
+// objects stay distinct, but the address cannot be read back). A value type
+// gives a hash of its value, which other values may share.
 DEF_PRIMITIVE(object_hash)
 {
   Value value = args[1];
@@ -889,7 +891,10 @@ DEF_PRIMITIVE(object_hash)
     Obj* obj = AS_OBJ(value);
     if (obj->type != OBJ_STRING && obj->type != OBJ_RANGE)
     {
-      RETURN_NUM((double)(uintptr_t)obj);
+      const uint64_t mask = (1ULL << 53) - 1;
+      uint64_t mixed = ((uint64_t)(uintptr_t)obj ^ vm->hashKey) & mask;
+      mixed = (mixed * 0x9e3779b97f4a7c15ULL) & mask;
+      RETURN_NUM((double)mixed);
     }
   }
   RETURN_NUM((double)wrenHashValue(value));

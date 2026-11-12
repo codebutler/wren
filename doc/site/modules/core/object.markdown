@@ -7,7 +7,7 @@
 Returns a number that agrees with `same`: if `Object.same(a, b)` is true,
 `Object.hash(a) == Object.hash(b)`. An object compared by reference has a
 number of its own for as long as it lives, so it can stand for the object
-as a map key. A value type (a number, string, range, boolean or null) gives
+as a map key. The number says nothing about where the object is in memory. A value type (a number, string, range, boolean or null) gives
 a hash of its value, which other values may share, so check `same` on a
 match.
 
